@@ -193,11 +193,18 @@ func (s *serviceManagerImpl) signalHandler() {
 		}
 
 		if sig == unix.SIGCHLD {
-			s.reapZombies()
-			// TODO: Handle the list of reaped processes.
+			procs := s.reapZombies()
+			go s.handleProcTermination(procs)
 		} else {
 			go s.multicastSig(sig)
 		}
+	}
+}
+
+func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
+	for _, proc := range procs {
+		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
+		// TODO: Implement this.
 	}
 }
 
