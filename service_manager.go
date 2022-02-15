@@ -77,6 +77,7 @@ type ServiceInfo struct {
 
 type serviceManagerImpl struct {
 	log                 zzzlogi.Logger
+	shuttingDown        bool
 	multiServiceMode    bool
 	finalExitCode       int
 	sigCh               chan os.Signal
@@ -257,11 +258,56 @@ func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
 	s.log.Debugf("Added pid: %d to the list of services", proc.pid)
 }
 
+func (s *serviceManagerImpl) removeService(pid int) (*launchedServiceInfo, bool) {
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+	if proc, ok := s.services[pid]; ok {
+		delete(s.services, pid)
+		s.log.Debugf("Deleted pid: %d from the list of services", pid)
+		return proc, true
+	}
+	return nil, false
+}
+
 func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
-		// TODO: Implement this.
+		// We could be reaping processes that weren't one of the service processes
+		// we launched directly (however, likely to be one of its children).
+		serv, match := s.removeService(proc.pid)
+		if match {
+			// Only handle services that service manager cares about.
+			s.handleServiceTermination(serv, proc.waitStatus.ExitStatus())
+		}
 	}
+}
+
+func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo, exitStatus int) {
+	s.log.Infof("Service: %v exited, finalExitCode: %d", serv, exitStatus)
+	if s.shuttingDown {
+		// We are already in the middle of a shut down, nothing more to do.
+		return
+	}
+	s.shuttingDown = true
+
+	if !s.multiServiceMode {
+		// In single service mode persist the exit code same as the
+		// terminated service.
+		s.finalExitCode = exitStatus
+	} else {
+		// In multi service mode calculate the exit code based on:
+		//     - Use the terminated process's exit code if non-zero.
+		//     - Set exit code to a pre-determined non-zero value if
+		//       terminated process's exit code is zero.
+		if exitStatus != 0 {
+			s.finalExitCode = exitStatus
+		} else {
+			s.finalExitCode = 77
+		}
+	}
+
+	// Wake up the waiter goroutine to handle the rest.
+	s.serviceTermWaiterCh <- serv
 }
 
 func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
