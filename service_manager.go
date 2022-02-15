@@ -391,5 +391,7 @@ func (s *serviceManagerImpl) shutDown() {
 		tick.Stop()
 	}
 
+	close(s.sigCh)
+
 	s.log.Infof("All services have terminated!")
 }
