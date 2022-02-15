@@ -267,8 +267,17 @@ func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 	s.log.Infof("Signal Forwader - Chaining signal: %q to all services", sig)
 
-	// TODO: Implement this.
-	return 0
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+
+	count := len(s.services)
+	for pid := range s.services {
+		err := unix.Kill(pid, sig.(unix.Signal))
+		if err != nil {
+			s.log.Warnf("Error sending signal: %s to pid: %d", sig, pid)
+		}
+	}
+	return count
 }
 
 func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
