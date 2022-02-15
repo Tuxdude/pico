@@ -392,6 +392,9 @@ func (s *serviceManagerImpl) shutDown() {
 	}
 
 	close(s.sigCh)
+	// The tiny sleep will allow the goroutines to exit.
+	// TODO: Replace this by a WaitGroup instead.
+	time.Sleep(10 * time.Millisecond)
 
 	s.log.Infof("All services have terminated!")
 }
