@@ -77,6 +77,15 @@ type serviceManagerImpl struct {
 	sigCh chan os.Signal
 }
 
+type reapedProcInfo struct {
+	pid        int
+	waitStatus unix.WaitStatus
+}
+
+func (r *reapedProcInfo) String() string {
+	return fmt.Sprintf("{pid: %d waitStatus: %v}", r.pid, r.waitStatus)
+}
+
 // NewServiceManager instantiates an InitServiceManager along with
 // performing the necessary initialization.
 func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
@@ -101,10 +110,44 @@ func (s *serviceManagerImpl) Wait() int {
 	return -1
 }
 
-func (s *serviceManagerImpl) reapZombies() {
+func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProcInfo {
+	if err == unix.ECHILD {
+		// No more children, nothing further to do here.
+		return nil
+	}
+	if err != nil {
+		s.log.Errorf("Reap Zombies - Got a different unexpected error during wait: %v", err)
+		return nil
+	}
+	if pid <= 0 {
+		return nil
+	}
+
+	return &reapedProcInfo{
+		pid:        pid,
+		waitStatus: wstatus,
+	}
+}
+
+func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
 	s.log.Debugf("Zombie Reaper - Received signal: %q", unix.SIGCHLD)
 
-	// TODO: Implement this.
+	var result []*reapedProcInfo
+	for {
+		var wstatus unix.WaitStatus
+		var pid int
+		var err error
+		err = unix.EINTR
+		for err == unix.EINTR {
+			pid, err = unix.Wait4(-1, &wstatus, unix.WNOHANG, nil)
+		}
+		proc := s.parseWait4Result(pid, err, wstatus)
+		if proc == nil {
+			break
+		}
+		result = append(result, proc)
+	}
+	return result
 }
 
 func (s *serviceManagerImpl) signalHandler() {
@@ -118,6 +161,7 @@ func (s *serviceManagerImpl) signalHandler() {
 
 		if sig == unix.SIGCHLD {
 			s.reapZombies()
+			// TODO: Handle the list of reaped processes.
 		} else {
 			go s.multicastSig(sig)
 		}
