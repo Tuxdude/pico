@@ -110,6 +110,38 @@ func (s *serviceManagerImpl) Wait() int {
 	return -1
 }
 
+func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
+	exitStatus := wstatus.ExitStatus()
+	if !wstatus.Exited() {
+		if wstatus.Signaled() {
+			s.log.Warnf(
+				"Reaped zombie pid: %d was terminated by signal: %q, wstatus: %v!",
+				pid,
+				wstatus.Signal(),
+				wstatus,
+			)
+		} else {
+			s.log.Errorf("Reaped zombie pid: %d did not exit gracefully, wstatus: %v!", pid, wstatus)
+		}
+	} else {
+		if exitStatus != 0 {
+			s.log.Warnf(
+				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
+				pid,
+				exitStatus,
+				wstatus,
+			)
+		} else {
+			s.log.Infof(
+				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
+				pid,
+				exitStatus,
+				wstatus,
+			)
+		}
+	}
+}
+
 func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProcInfo {
 	if err == unix.ECHILD {
 		// No more children, nothing further to do here.
@@ -123,6 +155,7 @@ func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.W
 		return nil
 	}
 
+	s.logProcExitStatus(pid, wstatus)
 	return &reapedProcInfo{
 		pid:        pid,
 		waitStatus: wstatus,
