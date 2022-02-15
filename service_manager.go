@@ -133,8 +133,7 @@ func (s *serviceManagerImpl) LaunchServices(services ...*ServiceInfo) error {
 	for _, serv := range services {
 		err := s.launchService(serv.Cmd, serv.Args...)
 		if err != nil {
-			// TODO: Shut down any prior launched services as well
-			// as other monitoring goroutines launched.
+			s.shutDown()
 			return err
 		}
 	}
@@ -147,8 +146,8 @@ func (s *serviceManagerImpl) Wait() int {
 	close(s.serviceTermWaiterCh)
 
 	s.log.Infof("Cleaning up since service: %v terminated", serv)
-	// TODO: Trigger clean up here.
 
+	s.shutDown()
 	return s.finalExitCode
 }
 
@@ -326,6 +325,12 @@ func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 	return count
 }
 
+func (s *serviceManagerImpl) serviceCount() int {
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+	return len(s.services)
+}
+
 func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -348,4 +353,43 @@ func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 
 	s.log.Infof("Launched service %q pid: %d", bin, proc.pid)
 	return nil
+}
+
+// shutDown terminates any running services launched by InitServiceManager,
+// unregisters notifications for all signals, and frees up any other
+// monitoring resources.
+func (s *serviceManagerImpl) shutDown() {
+	sig := unix.SIGTERM
+	pendingTries := 4
+	for pendingTries > 0 {
+		if pendingTries == 1 {
+			sig = unix.SIGKILL
+		}
+		pendingTries--
+
+		count := s.multicastSig(sig)
+		if count == 0 {
+			break
+		}
+		s.log.Infof("Sent signal %q to %d services", sig, count)
+
+		sleepUntil := time.NewTimer(5 * time.Second)
+		tick := time.NewTicker(10 * time.Millisecond)
+		keepWaiting := true
+		for keepWaiting {
+			select {
+			case <-tick.C:
+				if s.serviceCount() == 0 {
+					keepWaiting = false
+					pendingTries = 0
+				}
+			case <-sleepUntil.C:
+				keepWaiting = false
+			}
+		}
+		sleepUntil.Stop()
+		tick.Stop()
+	}
+
+	s.log.Infof("All services have terminated!")
 }
