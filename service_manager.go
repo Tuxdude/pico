@@ -4,7 +4,10 @@ package pico
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/tuxdude/zzzlogi"
@@ -73,13 +76,31 @@ type ServiceInfo struct {
 }
 
 type serviceManagerImpl struct {
-	log   zzzlogi.Logger
-	sigCh chan os.Signal
+	log              zzzlogi.Logger
+	multiServiceMode bool
+	sigCh            chan os.Signal
+
+	servicesMu sync.Mutex
+	services   map[int]*launchedServiceInfo
+}
+
+type launchedServiceInfo struct {
+	pid     int
+	service ServiceInfo
 }
 
 type reapedProcInfo struct {
 	pid        int
 	waitStatus unix.WaitStatus
+}
+
+func (l *launchedServiceInfo) String() string {
+	return fmt.Sprintf(
+		"{pid: %d cmd: %q args: %q}",
+		l.pid,
+		l.service.Cmd,
+		l.service.Args,
+	)
 }
 
 func (r *reapedProcInfo) String() string {
@@ -90,8 +111,9 @@ func (r *reapedProcInfo) String() string {
 // performing the necessary initialization.
 func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
 	sm := &serviceManagerImpl{
-		log:   log,
-		sigCh: make(chan os.Signal, 10),
+		log:      log,
+		sigCh:    make(chan os.Signal, 10),
+		services: make(map[int]*launchedServiceInfo),
 	}
 	go sm.signalHandler()
 
@@ -103,7 +125,15 @@ func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
 }
 
 func (s *serviceManagerImpl) LaunchServices(services ...*ServiceInfo) error {
-	return fmt.Errorf("not implemented")
+	for _, serv := range services {
+		err := s.launchService(serv.Cmd, serv.Args...)
+		if err != nil {
+			// TODO: Shut down any prior launched services as well
+			// as other monitoring goroutines launched.
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *serviceManagerImpl) Wait() int {
@@ -201,6 +231,21 @@ func (s *serviceManagerImpl) signalHandler() {
 	}
 }
 
+func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+	if !s.multiServiceMode {
+		if len(s.services) == 1 {
+			s.multiServiceMode = true
+		} else if len(s.services) != 0 {
+			s.log.Fatalf("Number of existing services is neither 0 or 1, yet multiServiceMode is set to false! len: %d", len(s.services))
+		}
+	}
+
+	s.services[proc.pid] = proc
+	s.log.Debugf("Added pid: %d to the list of services", proc.pid)
+}
+
 func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
@@ -213,4 +258,28 @@ func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 
 	// TODO: Implement this.
 	return 0
+}
+
+func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
+	cmd := exec.Command(bin, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Use a new process group for the child.
+		Setpgid: true,
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("failed to launch service %q %q, reason: %v", bin, args, err)
+	}
+
+	proc := &launchedServiceInfo{}
+	proc.pid = cmd.Process.Pid
+	proc.service.Cmd = bin
+	proc.service.Args = make([]string, len(args))
+	copy(proc.service.Args, args)
+	s.addService(proc)
+
+	s.log.Infof("Launched service %q pid: %d", bin, proc.pid)
+	return nil
 }
