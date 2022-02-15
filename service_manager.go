@@ -391,6 +391,7 @@ func (s *serviceManagerImpl) shutDown() {
 		tick.Stop()
 	}
 
+	signal.Reset()
 	close(s.sigCh)
 	// The tiny sleep will allow the goroutines to exit.
 	// TODO: Replace this by a WaitGroup instead.
