@@ -76,9 +76,11 @@ type ServiceInfo struct {
 }
 
 type serviceManagerImpl struct {
-	log              zzzlogi.Logger
-	multiServiceMode bool
-	sigCh            chan os.Signal
+	log                 zzzlogi.Logger
+	multiServiceMode    bool
+	finalExitCode       int
+	sigCh               chan os.Signal
+	serviceTermWaiterCh chan *launchedServiceInfo
 
 	servicesMu sync.Mutex
 	services   map[int]*launchedServiceInfo
@@ -111,9 +113,11 @@ func (r *reapedProcInfo) String() string {
 // performing the necessary initialization.
 func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
 	sm := &serviceManagerImpl{
-		log:      log,
-		sigCh:    make(chan os.Signal, 10),
-		services: make(map[int]*launchedServiceInfo),
+		log:                 log,
+		finalExitCode:       77,
+		sigCh:               make(chan os.Signal, 10),
+		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
+		services:            make(map[int]*launchedServiceInfo),
 	}
 	go sm.signalHandler()
 
@@ -137,7 +141,14 @@ func (s *serviceManagerImpl) LaunchServices(services ...*ServiceInfo) error {
 }
 
 func (s *serviceManagerImpl) Wait() int {
-	return -1
+	// Wait for the first service termination.
+	serv := <-s.serviceTermWaiterCh
+	close(s.serviceTermWaiterCh)
+
+	s.log.Infof("Cleaning up since service: %v terminated", serv)
+	// TODO: Trigger clean up here.
+
+	return s.finalExitCode
 }
 
 func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
