@@ -31,8 +31,6 @@ jobs:
           - go
         os:
           - ubuntu-latest
-          - macos-latest
-          - windows-latest
 
     steps:
       - name: Checkout repository
