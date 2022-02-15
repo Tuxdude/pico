@@ -97,6 +97,10 @@ type reapedProcInfo struct {
 	waitStatus unix.WaitStatus
 }
 
+func (s *ServiceInfo) String() string {
+	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
+}
+
 func (l *launchedServiceInfo) String() string {
 	return fmt.Sprintf(
 		"{pid: %d cmd: %q args: %q}",
