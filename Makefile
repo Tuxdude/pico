@@ -50,7 +50,6 @@ GOFMT           := $(GO_FMT_CMD) -s -w
 GOLINT          := $(GO_LINT_CMD) -set_exit_status -min_confidence 0.200001
 GOLINTAGG       := $(GO_LINT_CMD) -set_exit_status -min_confidence 0
 GOLANGCILINT    := $(GO_CI_LINT_CMD) run
-BUILDCMD        := if [ -d cmd ]; then $(MAKE) -C cmd; else echo "No cmd directory found, ignoring ..."; fi
 
 # Alternative for running golangci-lint, using docker instead:
 # docker run \
@@ -83,7 +82,7 @@ else
     DEP_PKGS := $(addsuffix @master,$(DEP_PKGS))
 endif
 
-all: fiximports fmt lint vet build buildcmd test
+all: fiximports fmt lint vet build test
 
 clean:
 	$(call ExecWithMsg,Cleaning,$(GOCLEAN) ./...)
@@ -112,9 +111,6 @@ deps_update:
 build: tidy
 	$(call ExecWithMsg,Building,$(GOBUILD) ./...)
 
-buildcmd: build
-	$(call ExecWithMsg,Building recursively in cmd ...,$(BUILDCMD))
-
 buildstripped: tidy
 	$(call ExecWithMsg,Building Stripped,$(GOSTRIPPEDBUILD) ./...)
 
@@ -124,4 +120,5 @@ test: tidy
 coverage: tidy
 	$(call ExecWithMsg,Testing with Coverage generation,$(GOCOVERAGE) ./...)
 
-.PHONY: all clean fiximports fmt lint lintagg vet tidy deps_update build buildcmd buildstripped test
+.PHONY: all clean fiximports fmt lint lintagg vet tidy deps_update
+.PHONY: build buildstripped test coverage
