@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/tuxdude/zzzlogi"
@@ -412,7 +411,7 @@ func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
 // specified list of command line arguments.
 func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		// Use a new process group for the child.
 		Setpgid: true,
 	}
