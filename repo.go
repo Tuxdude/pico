@@ -1,10 +1,29 @@
 package pico
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/tuxdude/zzzlogi"
 )
+
+// launchedServiceInfo stores information about a single launched service.
+type launchedServiceInfo struct {
+	// pid of the launched service.
+	pid int
+	// Service information.
+	service ServiceInfo
+}
+
+// Strings returns the string representation of launched service information.
+func (l *launchedServiceInfo) String() string {
+	return fmt.Sprintf(
+		"{pid: %d cmd: %q args: %q}",
+		l.pid,
+		l.service.Cmd,
+		l.service.Args,
+	)
+}
 
 // serviceRepo is a service repository that allows adding, removing and
 // querying services.

@@ -2,10 +2,8 @@
 package pico
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sync"
 	"time"
@@ -95,19 +93,13 @@ type serviceManagerImpl struct {
 	reaper *zombieReaper
 	// Service repository.
 	repo *serviceRepo
+	// Service launcher.
+	launcher *serviceLauncher
 
 	// Mutex controlling access to the field shuttingDown.
 	stateMu sync.Mutex
 	// True if shutting down, false otherwise.
 	shuttingDown bool
-}
-
-// launchedServiceInfo stores information about a single launched service.
-type launchedServiceInfo struct {
-	// pid of the launched service.
-	pid int
-	// Service information.
-	service ServiceInfo
 }
 
 func sigInfo(sig unix.Signal) string {
@@ -119,16 +111,6 @@ func (s *ServiceInfo) String() string {
 	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
 }
 
-// Strings returns the string representation of launched service information.
-func (l *launchedServiceInfo) String() string {
-	return fmt.Sprintf(
-		"{pid: %d cmd: %q args: %q}",
-		l.pid,
-		l.service.Cmd,
-		l.service.Args,
-	)
-}
-
 // NewServiceManager instantiates an InitServiceManager, performs the
 // necessary initialization for the init responsibilities, and launches the
 // specified list of services.
@@ -137,23 +119,26 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 	if len(services) > 1 {
 		multiServiceMode = true
 	}
+
 	sm := &serviceManagerImpl{
 		log:                 log,
 		multiServiceMode:    multiServiceMode,
 		finalExitCode:       77,
-		reaper:              newZombieReaper(log),
-		repo:                newServiceRepo(log),
 		sigCh:               make(chan os.Signal, 10),
 		sigHandlerDoneCh:    make(chan interface{}, 1),
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
 	}
+	sm.reaper = newZombieReaper(log)
+	sm.repo = newServiceRepo(log)
+	sm.launcher = newServiceLauncher(log, sm.repo)
 
 	readyCh := make(chan interface{}, 1)
 	go sm.signalHandler(readyCh)
 	<-readyCh
 
-	err := sm.launchServices(services...)
+	err := sm.launcher.launch(services...)
 	if err != nil {
+		sm.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
 	}
 
@@ -280,77 +265,6 @@ func (s *serviceManagerImpl) multicastSig(sig unix.Signal) int {
 		}
 	}
 	return count
-}
-
-// launchServices launches the specified list of services.
-func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
-	for _, serv := range services {
-		err := s.launchService(serv.Cmd, serv.Args...)
-		if err != nil {
-			s.shutDown()
-			return err
-		}
-	}
-	return nil
-}
-
-// attachStdinTTY attaches the TTY to the process with the specified pid.
-func (s *serviceManagerImpl) attachStdinTTY(pid int) error {
-	err := unix.IoctlSetPointerInt(unix.Stdin, unix.TIOCSPGRP, pid)
-	if err == nil {
-		s.log.Debugf("Attached TTY of stdin to pid: %d", pid)
-		return nil
-	}
-
-	var errNo unix.Errno
-	if errors.As(err, &errNo) {
-		if errNo == unix.ENOTTY {
-			s.log.Infof("No stdin TTY found to attach, ignoring")
-			return nil
-		}
-		return fmt.Errorf("tcsetpgrp failed attempting to attach stdin TTY, errno: %v", errNo)
-	}
-	return fmt.Errorf("tcsetpgrp failed attempting to attach stdin TTY, reason: %T %v", err, err)
-}
-
-// launchService launches the specified service binary invoking it with the
-// specified list of command line arguments.
-func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
-	cmd := exec.Command(bin, args...)
-	cmd.SysProcAttr = &unix.SysProcAttr{
-		// Use a new process group for the child.
-		Setpgid: true,
-	}
-	if !s.multiServiceMode {
-		// Only in single service mode we redirect stdin to the
-		// one and only service that is being launched.
-		cmd.Stdin = os.Stdin
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to launch service %q %q, reason: %v", bin, args, err)
-	}
-
-	if !s.multiServiceMode {
-		// Only in single service mode, attach the stdin TTY (if present) to
-		// the one and only service launched.
-		err := s.attachStdinTTY(cmd.Process.Pid)
-		if err != nil {
-			return err
-		}
-	}
-
-	proc := &launchedServiceInfo{}
-	proc.pid = cmd.Process.Pid
-	proc.service.Cmd = bin
-	proc.service.Args = make([]string, len(args))
-	copy(proc.service.Args, args)
-	s.repo.addService(proc)
-
-	s.log.Infof("Launched service %q pid: %d", bin, proc.pid)
-	return nil
 }
 
 // shutDown terminates any running services launched by InitServiceManager,
