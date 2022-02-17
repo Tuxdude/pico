@@ -119,6 +119,10 @@ type reapedProcInfo struct {
 	waitStatus unix.WaitStatus
 }
 
+func sigInfo(sig unix.Signal) string {
+	return fmt.Sprintf("%s(%d){%q}", unix.SignalName(sig), sig, os.Signal(sig))
+}
+
 // String returns the string representation of service information.
 func (s *ServiceInfo) String() string {
 	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
@@ -193,9 +197,9 @@ func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus)
 	if !wstatus.Exited() {
 		if wstatus.Signaled() {
 			s.log.Warnf(
-				"Reaped zombie pid: %d was terminated by signal: %q, wstatus: %v!",
+				"Reaped zombie pid: %d was terminated by signal: %s, wstatus: %v!",
 				pid,
-				wstatus.Signal(),
+				sigInfo(wstatus.Signal()),
 				wstatus,
 			)
 		} else {
@@ -246,8 +250,6 @@ func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.W
 // non-blocking wait system calls, and returns once there are no further
 // zombie child processes left.
 func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
-	s.log.Debugf("Zombie Reaper - Received signal: %q", unix.SIGCHLD)
-
 	var result []*reapedProcInfo
 	for {
 		var wstatus unix.WaitStatus
@@ -275,7 +277,7 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 	close(readyCh)
 
 	for {
-		sig, ok := <-s.sigCh
+		osSig, ok := <-s.sigCh
 		if !ok {
 			s.log.Debugf("Signal handler is exiting ...")
 			s.sigHandlerDoneCh <- nil
@@ -283,6 +285,8 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 			return
 		}
 
+		sig := osSig.(unix.Signal)
+		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
 			procs := s.reapZombies()
 			go s.handleProcTermination(procs)
@@ -370,19 +374,23 @@ func (s *serviceManagerImpl) markShutDown() bool {
 
 // multicastSig forwards the specified signal to all running services managed by
 // the service manager.
-func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
+func (s *serviceManagerImpl) multicastSig(sig unix.Signal) int {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
 
 	count := len(s.services)
 	if count > 0 {
-		s.log.Infof("Signal Forwader - Multicasting signal: %q to %d services", sig, count)
+		s.log.Infof(
+			"Signal Forwader - Multicasting signal: %s to %d services",
+			sigInfo(sig),
+			count,
+		)
 	}
 
 	for pid := range s.services {
-		err := unix.Kill(pid, sig.(unix.Signal))
+		err := unix.Kill(pid, sig)
 		if err != nil {
-			s.log.Warnf("Error sending signal: %s to pid: %d", sig, pid)
+			s.log.Warnf("Error sending signal: %s to pid: %d", sigInfo(sig), pid)
 		}
 	}
 	return count
@@ -483,7 +491,7 @@ func (s *serviceManagerImpl) shutDown() {
 		if count == 0 {
 			break
 		}
-		s.log.Infof("Sent signal %q to %d services", sig, count)
+		s.log.Infof("Sent signal %s to %d services", sigInfo(sig), count)
 
 		sleepUntil := time.NewTimer(5 * time.Second)
 		tick := time.NewTicker(10 * time.Millisecond)
