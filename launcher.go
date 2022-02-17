@@ -18,6 +18,8 @@ type serviceLauncher struct {
 	repo launcherRepo
 }
 
+// launcherRepo is the repository interface used by the launcher to add
+// the launched services to the repository.
 type launcherRepo interface {
 	addService(serv *launchedService)
 }
