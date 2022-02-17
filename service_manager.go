@@ -2,6 +2,7 @@
 package pico
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -407,6 +408,25 @@ func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
 	return nil
 }
 
+// attachStdinTTY attaches the TTY to the process with the specified pid.
+func (s *serviceManagerImpl) attachStdinTTY(pid int) error {
+	err := unix.IoctlSetPointerInt(unix.Stdin, unix.TIOCSPGRP, pid)
+	if err == nil {
+		s.log.Debugf("Attached TTY of stdin to pid: %d", pid)
+		return nil
+	}
+
+	var errNo unix.Errno
+	if errors.As(err, &errNo) {
+		if errNo == unix.ENOTTY {
+			s.log.Infof("No stdin TTY found to attach, ignoring")
+			return nil
+		}
+		return fmt.Errorf("tcsetpgrp failed attempting to attach stdin TTY, errno: %v", errNo)
+	}
+	return fmt.Errorf("tcsetpgrp failed attempting to attach stdin TTY, reason: %T %v", err, err)
+}
+
 // launchService launches the specified service binary invoking it with the
 // specified list of command line arguments.
 func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
@@ -415,11 +435,25 @@ func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 		// Use a new process group for the child.
 		Setpgid: true,
 	}
+	if !s.multiServiceMode {
+		// Only in single service mode we redirect stdin to the
+		// one and only service that is being launched.
+		cmd.Stdin = os.Stdin
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to launch service %q %q, reason: %v", bin, args, err)
+	}
+
+	if !s.multiServiceMode {
+		// Only in single service mode, attach the stdin TTY (if present) to
+		// the one and only service launched.
+		err := s.attachStdinTTY(cmd.Process.Pid)
+		if err != nil {
+			return err
+		}
 	}
 
 	proc := &launchedServiceInfo{}
