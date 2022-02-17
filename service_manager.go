@@ -124,6 +124,7 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 
 	err := launchServices(log, sm.repo, services...)
 	if err != nil {
+		sm.janitor.markShutDown()
 		sm.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
 	}
