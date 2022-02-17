@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"github.com/tuxdude/zzzlogi"
@@ -76,28 +75,20 @@ type ServiceInfo struct {
 type serviceManagerImpl struct {
 	// Logger used by the service manager.
 	log zzzlogi.Logger
-	// True if more than one service is being managed by the service
-	// manager, false otherwise.
-	multiServiceMode bool
-	// Final exit status code to return.
-	finalExitCode int
 	// The channel used to receive notifications about signals from the OS.
 	sigCh chan os.Signal
 	// The channel used to notify that the signal handler goroutine has exited.
 	sigHandlerDoneCh chan interface{}
 	// The channel used to receive notification about the first service
 	// that gets terminated.
-	serviceTermWaiterCh chan *launchedService
+	serviceTermNotificationCh <-chan *terminatedService
 
 	// Zombie process reaper.
 	reaper *zombieReaper
 	// Service repository.
 	repo *serviceRepo
-
-	// Mutex controlling access to the field shuttingDown.
-	stateMu sync.Mutex
-	// True if shutting down, false otherwise.
-	shuttingDown bool
+	// Service janitor.
+	janitor *serviceJanitor
 }
 
 func sigInfo(sig unix.Signal) string {
@@ -119,15 +110,13 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 	}
 
 	sm := &serviceManagerImpl{
-		log:                 log,
-		multiServiceMode:    multiServiceMode,
-		finalExitCode:       77,
-		sigCh:               make(chan os.Signal, 10),
-		sigHandlerDoneCh:    make(chan interface{}, 1),
-		serviceTermWaiterCh: make(chan *launchedService, 1),
+		log:              log,
+		sigCh:            make(chan os.Signal, 10),
+		sigHandlerDoneCh: make(chan interface{}, 1),
 	}
 	sm.reaper = newZombieReaper(log)
 	sm.repo = newServiceRepo(log)
+	sm.janitor, sm.serviceTermNotificationCh = newServiceJanitor(log, sm.repo, multiServiceMode)
 
 	readyCh := make(chan interface{}, 1)
 	go sm.signalHandler(readyCh)
@@ -151,13 +140,12 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 // same as the first service which exited if non-zero, 77 otherwise.
 func (s *serviceManagerImpl) Wait() int {
 	// Wait for the first service termination.
-	serv := <-s.serviceTermWaiterCh
-	close(s.serviceTermWaiterCh)
+	t := <-s.serviceTermNotificationCh
 
-	s.log.Infof("Shutting down since service: %v terminated", serv)
+	s.log.Infof("Shutting down since service: %v terminated", t.service)
 
 	s.shutDown()
-	return s.finalExitCode
+	return t.exitStatus
 }
 
 // signalHandler registers signals to get notified on, and blocks in a loop
@@ -181,64 +169,11 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
 			procs := s.reaper.reap()
-			go s.handleProcTermination(procs)
+			go s.janitor.handleProcTermination(procs)
 		} else {
 			go s.multicastSig(sig)
 		}
 	}
-}
-
-// handleProcTermination handles the termination of the specified processes.
-func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
-	for _, proc := range procs {
-		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
-		// We could be reaping processes that weren't one of the service processes
-		// we launched directly (however, likely to be one of its children).
-		serv, match := s.repo.removeService(proc.pid)
-		if match {
-			// Only handle services that service manager cares about.
-			s.handleServiceTermination(serv, proc.waitStatus.ExitStatus())
-		}
-	}
-}
-
-// handleServiceTermination handles the termination of the specified service.
-func (s *serviceManagerImpl) handleServiceTermination(serv *launchedService, exitStatus int) {
-	s.log.Infof("Service: %v exited, finalExitCode: %d", serv, exitStatus)
-
-	if !s.markShutDown() {
-		// We are already in the middle of a shut down, nothing more to do.
-		return
-	}
-
-	if !s.multiServiceMode {
-		// In single service mode persist the exit code same as the
-		// terminated service.
-		s.finalExitCode = exitStatus
-	} else {
-		// In multi service mode calculate the exit code based on:
-		//     - Use the terminated process's exit code if non-zero.
-		//     - Set exit code to a pre-determined non-zero value if
-		//       terminated process's exit code is zero.
-		if exitStatus != 0 {
-			s.finalExitCode = exitStatus
-		} else {
-			s.finalExitCode = 77
-		}
-	}
-
-	// Wake up the waiter goroutine to handle the rest.
-	s.serviceTermWaiterCh <- serv
-}
-
-func (s *serviceManagerImpl) markShutDown() bool {
-	s.stateMu.Lock()
-	defer s.stateMu.Unlock()
-	if s.shuttingDown {
-		return false
-	}
-	s.shuttingDown = true
-	return true
 }
 
 // multicastSig forwards the specified signal to all running services managed by
