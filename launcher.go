@@ -15,11 +15,15 @@ type serviceLauncher struct {
 	// Logger used by the service launcher.
 	log zzzlogi.Logger
 	// Service repository.
-	repo *serviceRepo
+	repo launcherRepo
+}
+
+type launcherRepo interface {
+	addService(serv *launchedServiceInfo)
 }
 
 // newServiceLauncher instantiates a service launcher.
-func newServiceLauncher(log zzzlogi.Logger, repo *serviceRepo) *serviceLauncher {
+func newServiceLauncher(log zzzlogi.Logger, repo launcherRepo) *serviceLauncher {
 	return &serviceLauncher{
 		log:  log,
 		repo: repo,
