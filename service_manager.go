@@ -57,8 +57,6 @@ var (
 // services (including forwarding signals to them from the process where
 // InitServiceManager is running).
 type InitServiceManager interface {
-	// LaunchServices launches the specified list of services.
-	LaunchServices(services ...*ServiceInfo) error
 	// Wait initiates the blocking wait of the init process. The
 	// call doesn't return until all the services have terminated.
 	// The return value indicates the final exit status code to be used.
@@ -116,7 +114,7 @@ func (r *reapedProcInfo) String() string {
 
 // NewServiceManager instantiates an InitServiceManager along with
 // performing the necessary initialization.
-func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
+func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServiceManager, error) {
 	sm := &serviceManagerImpl{
 		log:                 log,
 		finalExitCode:       77,
@@ -130,10 +128,16 @@ func NewServiceManager(log zzzlogi.Logger) (InitServiceManager, error) {
 	// TODO: Replace this with a channel preferably.
 	time.Sleep(100 * time.Millisecond)
 
+	err := sm.launchServices(services...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
+	}
+
 	return sm, nil
 }
 
-func (s *serviceManagerImpl) LaunchServices(services ...*ServiceInfo) error {
+// launchServices launches the specified list of services.
+func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
 	for _, serv := range services {
 		err := s.launchService(serv.Cmd, serv.Args...)
 		if err != nil {
