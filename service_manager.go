@@ -511,6 +511,12 @@ func (s *serviceManagerImpl) shutDown() {
 		tick.Stop()
 	}
 
+	s.shutDownSignalHandler()
+	s.log.Infof("All services have terminated!")
+}
+
+// shutDownSignalHandler gracefully shuts down the signal handler goroutine.
+func (s *serviceManagerImpl) shutDownSignalHandler() {
 	signal.Reset()
 	close(s.sigCh)
 
@@ -525,6 +531,4 @@ func (s *serviceManagerImpl) shutDown() {
 		s.log.Debugf("Signal handler did not exit, giving up and proceeding with termination")
 	}
 	timeout.Stop()
-
-	s.log.Infof("All services have terminated!")
 }
