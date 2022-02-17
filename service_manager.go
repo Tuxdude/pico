@@ -148,11 +148,10 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
 		services:            make(map[int]*launchedServiceInfo),
 	}
-	go sm.signalHandler()
 
-	// Sleep for a short duration to allow the goroutines to initialize.
-	// TODO: Replace this with a channel preferably.
-	time.Sleep(100 * time.Millisecond)
+	readyCh := make(chan interface{}, 1)
+	go sm.signalHandler(readyCh)
+	<-readyCh
 
 	err := sm.launchServices(services...)
 	if err != nil {
@@ -262,8 +261,11 @@ func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
 // signalHandler registers signals to get notified on, and blocks in a loop
 // to receive and handle signals. If sigCh is closed, the loop terminates
 // and control exits this function.
-func (s *serviceManagerImpl) signalHandler() {
+func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 	signal.Notify(s.sigCh, listeningSigs...)
+	readyCh <- nil
+	close(readyCh)
+
 	for {
 		sig, ok := <-s.sigCh
 		if !ok {
