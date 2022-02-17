@@ -154,18 +154,6 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 	return sm, nil
 }
 
-// launchServices launches the specified list of services.
-func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
-	for _, serv := range services {
-		err := s.launchService(serv.Cmd, serv.Args...)
-		if err != nil {
-			s.shutDown()
-			return err
-		}
-	}
-	return nil
-}
-
 // Wait performs a blocking wait for all the launched services to terminate.
 // Once the first launched service terminates, the service manager initiates
 // the shut down sequence terminating all remaining services and returns
@@ -376,6 +364,18 @@ func (s *serviceManagerImpl) serviceCount() int {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
 	return len(s.services)
+}
+
+// launchServices launches the specified list of services.
+func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
+	for _, serv := range services {
+		err := s.launchService(serv.Cmd, serv.Args...)
+		if err != nil {
+			s.shutDown()
+			return err
+		}
+	}
+	return nil
 }
 
 // launchService launches the specified service binary invoking it with the
