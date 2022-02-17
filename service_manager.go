@@ -93,8 +93,6 @@ type serviceManagerImpl struct {
 	reaper *zombieReaper
 	// Service repository.
 	repo *serviceRepo
-	// Service launcher.
-	launcher *serviceLauncher
 
 	// Mutex controlling access to the field shuttingDown.
 	stateMu sync.Mutex
@@ -130,13 +128,12 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 	}
 	sm.reaper = newZombieReaper(log)
 	sm.repo = newServiceRepo(log)
-	sm.launcher = newServiceLauncher(log, sm.repo)
 
 	readyCh := make(chan interface{}, 1)
 	go sm.signalHandler(readyCh)
 	<-readyCh
 
-	err := sm.launcher.launch(services...)
+	err := launchServices(log, sm.repo, services...)
 	if err != nil {
 		sm.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)

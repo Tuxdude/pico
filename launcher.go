@@ -22,12 +22,14 @@ type launcherRepo interface {
 	addService(serv *launchedService)
 }
 
-// newServiceLauncher instantiates a service launcher.
-func newServiceLauncher(log zzzlogi.Logger, repo launcherRepo) *serviceLauncher {
-	return &serviceLauncher{
+// launchServices launches the specified list of services and updates the
+// service list in the specified repository.
+func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*ServiceInfo) error {
+	sl := &serviceLauncher{
 		log:  log,
 		repo: repo,
 	}
+	return sl.launch(services...)
 }
 
 // launch launches the specified list of services.
