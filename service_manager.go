@@ -90,18 +90,16 @@ type serviceManagerImpl struct {
 	// The channel used to receive notification about the first service
 	// that gets terminated.
 	serviceTermWaiterCh chan *launchedServiceInfo
+
 	// Zombie process reaper.
 	reaper *zombieReaper
+	// Service repository.
+	repo *serviceRepo
 
 	// Mutex controlling access to the field shuttingDown.
 	stateMu sync.Mutex
 	// True if shutting down, false otherwise.
 	shuttingDown bool
-
-	// Mutex controlling access to the field services.
-	servicesMu sync.Mutex
-	// List of services.
-	services map[int]*launchedServiceInfo
 }
 
 // launchedServiceInfo stores information about a single launched service.
@@ -144,10 +142,10 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		multiServiceMode:    multiServiceMode,
 		finalExitCode:       77,
 		reaper:              newZombieReaper(log),
+		repo:                newServiceRepo(log),
 		sigCh:               make(chan os.Signal, 10),
 		sigHandlerDoneCh:    make(chan interface{}, 1),
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
-		services:            make(map[int]*launchedServiceInfo),
 	}
 
 	readyCh := make(chan interface{}, 1)
@@ -208,36 +206,13 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 	}
 }
 
-// addService adds the specified the launched service to the service list.
-func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-
-	s.services[proc.pid] = proc
-	s.log.Debugf("Added pid: %d to the list of services", proc.pid)
-}
-
-// removeService removes the launched service from the service list based on
-// the specified pid. If the pid doesn't match one of the launched services,
-// the call is a no-op.
-func (s *serviceManagerImpl) removeService(pid int) (*launchedServiceInfo, bool) {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-	if proc, ok := s.services[pid]; ok {
-		delete(s.services, pid)
-		s.log.Debugf("Deleted pid: %d from the list of services", pid)
-		return proc, true
-	}
-	return nil, false
-}
-
 // handleProcTermination handles the termination of the specified processes.
 func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
 		// We could be reaping processes that weren't one of the service processes
 		// we launched directly (however, likely to be one of its children).
-		serv, match := s.removeService(proc.pid)
+		serv, match := s.repo.removeService(proc.pid)
 		if match {
 			// Only handle services that service manager cares about.
 			s.handleServiceTermination(serv, proc.waitStatus.ExitStatus())
@@ -287,10 +262,9 @@ func (s *serviceManagerImpl) markShutDown() bool {
 // multicastSig forwards the specified signal to all running services managed by
 // the service manager.
 func (s *serviceManagerImpl) multicastSig(sig unix.Signal) int {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
+	pids := s.repo.pids()
 
-	count := len(s.services)
+	count := len(pids)
 	if count > 0 {
 		s.log.Infof(
 			"Signal Forwader - Multicasting signal: %s to %d services",
@@ -299,21 +273,13 @@ func (s *serviceManagerImpl) multicastSig(sig unix.Signal) int {
 		)
 	}
 
-	for pid := range s.services {
+	for _, pid := range pids {
 		err := unix.Kill(pid, sig)
 		if err != nil {
 			s.log.Warnf("Error sending signal: %s to pid: %d", sigInfo(sig), pid)
 		}
 	}
 	return count
-}
-
-// serviceCount returns the count of running services managed by the
-// service manager.
-func (s *serviceManagerImpl) serviceCount() int {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-	return len(s.services)
 }
 
 // launchServices launches the specified list of services.
@@ -381,7 +347,7 @@ func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 	proc.service.Cmd = bin
 	proc.service.Args = make([]string, len(args))
 	copy(proc.service.Args, args)
-	s.addService(proc)
+	s.repo.addService(proc)
 
 	s.log.Infof("Launched service %q pid: %d", bin, proc.pid)
 	return nil
@@ -422,7 +388,7 @@ func (s *serviceManagerImpl) shutDown() {
 		for keepWaiting {
 			select {
 			case <-tick.C:
-				if s.serviceCount() == 0 {
+				if s.repo.count() == 0 {
 					keepWaiting = false
 					pendingTries = 0
 				}
