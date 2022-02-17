@@ -316,12 +316,14 @@ func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo,
 }
 
 func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
-	s.log.Infof("Signal Forwader - Chaining signal: %q to all services", sig)
-
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
 
 	count := len(s.services)
+	if count > 0 {
+		s.log.Infof("Signal Forwader - Chaining signal: %q to %d services", sig, count)
+	}
+
 	for pid := range s.services {
 		err := unix.Kill(pid, sig.(unix.Signal))
 		if err != nil {
