@@ -95,6 +95,8 @@ func (s *serviceJanitor) handleServiceTermination(serv *launchedService, exitSta
 	close(s.termNotificationCh)
 }
 
+// markShutDown marks shut down state within the janitor which prevents
+// future notifications over the channel for service terminations.
 func (s *serviceJanitor) markShutDown() bool {
 	s.shuttingDownMu.Lock()
 	defer s.shuttingDownMu.Unlock()
