@@ -56,7 +56,7 @@ var (
 type InitServiceManager interface {
 	// Wait initiates the blocking wait of the init process. The
 	// call doesn't return until all the services have terminated.
-	// The return value indicates the final exit status code to be used.
+	// The return value indicates the final exit status to be used.
 	Wait() int
 }
 
@@ -134,9 +134,9 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 // Wait performs a blocking wait for all the launched services to terminate.
 // Once the first launched service terminates, the service manager initiates
 // the shut down sequence terminating all remaining services and returns
-// the exit status code based on single service mode or multi service mode.
-// In single service mode, the exit status code is the same as that of the
-// service which exited. In multi service mode, the exit status code is the
+// the exit status based on single service mode or multi service mode.
+// In single service mode, the exit status is the same as that of the
+// service which exited. In multi service mode, the exit status is the
 // same as the first service which exited if non-zero, 77 otherwise.
 func (s *serviceManagerImpl) Wait() int {
 	// Wait for the first service termination.
