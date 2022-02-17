@@ -90,6 +90,8 @@ type serviceManagerImpl struct {
 	// The channel used to receive notification about the first service
 	// that gets terminated.
 	serviceTermWaiterCh chan *launchedServiceInfo
+	// Zombie process reaper.
+	reaper *zombieReaper
 
 	// Mutex controlling access to the field shuttingDown.
 	stateMu sync.Mutex
@@ -108,15 +110,6 @@ type launchedServiceInfo struct {
 	pid int
 	// Service information.
 	service ServiceInfo
-}
-
-// reapedProcInfo stores information about a single reaped process.
-type reapedProcInfo struct {
-	// pid of the reaped process.
-	pid int
-	// Wait status obtained from the wait system call while reaping
-	// the process.
-	waitStatus unix.WaitStatus
 }
 
 func sigInfo(sig unix.Signal) string {
@@ -138,11 +131,6 @@ func (l *launchedServiceInfo) String() string {
 	)
 }
 
-// String returns the string representation of the reaped process information.
-func (r *reapedProcInfo) String() string {
-	return fmt.Sprintf("{pid: %d waitStatus: %v}", r.pid, r.waitStatus)
-}
-
 // NewServiceManager instantiates an InitServiceManager, performs the
 // necessary initialization for the init responsibilities, and launches the
 // specified list of services.
@@ -155,6 +143,7 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		log:                 log,
 		multiServiceMode:    multiServiceMode,
 		finalExitCode:       77,
+		reaper:              newZombieReaper(log),
 		sigCh:               make(chan os.Signal, 10),
 		sigHandlerDoneCh:    make(chan interface{}, 1),
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
@@ -191,83 +180,6 @@ func (s *serviceManagerImpl) Wait() int {
 	return s.finalExitCode
 }
 
-// logProcExitStatus logs the specified process's exit status information.
-func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
-	exitStatus := wstatus.ExitStatus()
-	if !wstatus.Exited() {
-		if wstatus.Signaled() {
-			s.log.Warnf(
-				"Reaped zombie pid: %d was terminated by signal: %s, wstatus: %v!",
-				pid,
-				sigInfo(wstatus.Signal()),
-				wstatus,
-			)
-		} else {
-			s.log.Errorf("Reaped zombie pid: %d did not exit gracefully, wstatus: %v!", pid, wstatus)
-		}
-	} else {
-		if exitStatus != 0 {
-			s.log.Warnf(
-				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
-				pid,
-				exitStatus,
-				wstatus,
-			)
-		} else {
-			s.log.Infof(
-				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
-				pid,
-				exitStatus,
-				wstatus,
-			)
-		}
-	}
-}
-
-// parseWait4Result parses the wait status information to build the reaped
-// process information.
-func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProcInfo {
-	if err == unix.ECHILD {
-		// No more children, nothing further to do here.
-		return nil
-	}
-	if err != nil {
-		s.log.Errorf("Zombie Reaper - Got an unexpected error during wait: %v", err)
-		return nil
-	}
-	if pid <= 0 {
-		return nil
-	}
-
-	s.logProcExitStatus(pid, wstatus)
-	return &reapedProcInfo{
-		pid:        pid,
-		waitStatus: wstatus,
-	}
-}
-
-// reapZombies reaps zombie child processes if any by performing one or more
-// non-blocking wait system calls, and returns once there are no further
-// zombie child processes left.
-func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
-	var result []*reapedProcInfo
-	for {
-		var wstatus unix.WaitStatus
-		var pid int
-		var err error
-		err = unix.EINTR
-		for err == unix.EINTR {
-			pid, err = unix.Wait4(-1, &wstatus, unix.WNOHANG, nil)
-		}
-		proc := s.parseWait4Result(pid, err, wstatus)
-		if proc == nil {
-			break
-		}
-		result = append(result, proc)
-	}
-	return result
-}
-
 // signalHandler registers signals to get notified on, and blocks in a loop
 // to receive and handle signals. If sigCh is closed, the loop terminates
 // and control exits this function.
@@ -288,7 +200,7 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 		sig := osSig.(unix.Signal)
 		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
-			procs := s.reapZombies()
+			procs := s.reaper.reap()
 			go s.handleProcTermination(procs)
 		} else {
 			go s.multicastSig(sig)
