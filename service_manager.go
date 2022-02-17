@@ -3,50 +3,10 @@ package pico
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 	"time"
 
 	"github.com/tuxdude/zzzlogi"
 	"golang.org/x/sys/unix"
-)
-
-var (
-	// All the signals to monitor.
-	listeningSigs = []os.Signal{
-		unix.SIGHUP,    //  1
-		unix.SIGINT,    //  2
-		unix.SIGQUIT,   //  3
-		unix.SIGILL,    //  4
-		unix.SIGTRAP,   //  5
-		unix.SIGABRT,   //  6
-		unix.SIGIOT,    //  6
-		unix.SIGBUS,    //  7
-		unix.SIGFPE,    //  8
-		unix.SIGKILL,   //  9
-		unix.SIGUSR1,   // 10
-		unix.SIGSEGV,   // 11
-		unix.SIGUSR2,   // 12
-		unix.SIGPIPE,   // 13
-		unix.SIGALRM,   // 14
-		unix.SIGTERM,   // 15
-		unix.SIGSTKFLT, // 16
-		unix.SIGCHLD,   // 17
-		unix.SIGCONT,   // 18
-		unix.SIGSTOP,   // 19
-		unix.SIGTSTP,   // 20
-		unix.SIGTTIN,   // 21
-		unix.SIGTTOU,   // 22
-		// unix.SIGURG,    // 23
-		unix.SIGXCPU,   // 24
-		unix.SIGXFSZ,   // 25
-		unix.SIGVTALRM, // 26
-		unix.SIGPROF,   // 27
-		unix.SIGWINCH,  // 28
-		unix.SIGIO,     // 29
-		unix.SIGPWR,    // 30
-		unix.SIGSYS,    // 31
-	}
 )
 
 // InitServiceManager manages init responsibility in a system (by reaping
@@ -70,15 +30,17 @@ type ServiceInfo struct {
 	Args []string
 }
 
+// String returns the string representation of service information.
+func (s *ServiceInfo) String() string {
+	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
+}
+
 // serviceManagerImpl is the implementation of the combo init and service
 // manager (aka picoinit).
 type serviceManagerImpl struct {
 	// Logger used by the service manager.
 	log zzzlogi.Logger
-	// The channel used to receive notifications about signals from the OS.
-	sigCh chan os.Signal
-	// The channel used to notify that the signal handler goroutine has exited.
-	sigHandlerDoneCh chan interface{}
+
 	// The channel used to receive notification about the first service
 	// that gets terminated.
 	serviceTermNotificationCh <-chan *terminatedService
@@ -89,15 +51,8 @@ type serviceManagerImpl struct {
 	repo *serviceRepo
 	// Service janitor.
 	janitor *serviceJanitor
-}
-
-func sigInfo(sig unix.Signal) string {
-	return fmt.Sprintf("%s(%d){%q}", unix.SignalName(sig), sig, os.Signal(sig))
-}
-
-// String returns the string representation of service information.
-func (s *ServiceInfo) String() string {
-	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
+	// Signal manager.
+	signals *signalManager
 }
 
 // NewServiceManager instantiates an InitServiceManager, performs the
@@ -110,17 +65,12 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 	}
 
 	sm := &serviceManagerImpl{
-		log:              log,
-		sigCh:            make(chan os.Signal, 10),
-		sigHandlerDoneCh: make(chan interface{}, 1),
+		log: log,
 	}
-	sm.reaper = newZombieReaper(log)
 	sm.repo = newServiceRepo(log)
+	sm.reaper = newZombieReaper(log)
 	sm.janitor, sm.serviceTermNotificationCh = newServiceJanitor(log, sm.repo, multiServiceMode)
-
-	readyCh := make(chan interface{}, 1)
-	go sm.signalHandler(readyCh)
-	<-readyCh
+	sm.signals = newSignalManager(log, sm.repo, sm.reaper, sm.janitor)
 
 	err := launchServices(log, sm.repo, services...)
 	if err != nil {
@@ -149,57 +99,6 @@ func (s *serviceManagerImpl) Wait() int {
 	return t.exitStatus
 }
 
-// signalHandler registers signals to get notified on, and blocks in a loop
-// to receive and handle signals. If sigCh is closed, the loop terminates
-// and control exits this function.
-func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
-	signal.Notify(s.sigCh, listeningSigs...)
-	readyCh <- nil
-	close(readyCh)
-
-	for {
-		osSig, ok := <-s.sigCh
-		if !ok {
-			s.log.Debugf("Signal handler is exiting ...")
-			s.sigHandlerDoneCh <- nil
-			close(s.sigHandlerDoneCh)
-			return
-		}
-
-		sig := osSig.(unix.Signal)
-		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
-		if sig == unix.SIGCHLD {
-			procs := s.reaper.reap()
-			go s.janitor.handleProcTermination(procs)
-		} else {
-			go s.multicastSig(sig)
-		}
-	}
-}
-
-// multicastSig forwards the specified signal to all running services managed by
-// the service manager.
-func (s *serviceManagerImpl) multicastSig(sig unix.Signal) int {
-	pids := s.repo.pids()
-
-	count := len(pids)
-	if count > 0 {
-		s.log.Infof(
-			"Signal Forwader - Multicasting signal: %s to %d services",
-			sigInfo(sig),
-			count,
-		)
-	}
-
-	for _, pid := range pids {
-		err := unix.Kill(pid, sig)
-		if err != nil {
-			s.log.Warnf("Error sending signal: %s to pid: %d", sigInfo(sig), pid)
-		}
-	}
-	return count
-}
-
 // shutDown terminates any running services launched by InitServiceManager,
 // unregisters notifications for all signals, and frees up any other
 // monitoring resources.
@@ -213,7 +112,7 @@ func (s *serviceManagerImpl) shutDown() {
 		}
 		pendingTries--
 
-		count := s.multicastSig(sig)
+		count := s.signals.multicastSig(sig)
 		if count == 0 {
 			break
 		}
@@ -247,24 +146,6 @@ func (s *serviceManagerImpl) shutDown() {
 		tick.Stop()
 	}
 
-	s.shutDownSignalHandler()
+	s.signals.shutDown()
 	s.log.Infof("All services have terminated!")
-}
-
-// shutDownSignalHandler gracefully shuts down the signal handler goroutine.
-func (s *serviceManagerImpl) shutDownSignalHandler() {
-	signal.Reset()
-	close(s.sigCh)
-
-	// Wait for the signal handler goroutine to exit gracefully
-	// within a period of 100ms after which we give up and exit
-	// anyway since the rest of the clean up is complete.
-	timeout := time.NewTimer(100 * time.Millisecond)
-	select {
-	case <-s.sigHandlerDoneCh:
-		s.log.Debugf("Signal handler has exited")
-	case <-timeout.C:
-		s.log.Debugf("Signal handler did not exit, giving up and proceeding with termination")
-	}
-	timeout.Stop()
 }
