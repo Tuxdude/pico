@@ -77,16 +77,16 @@ type ServiceInfo struct {
 // manager (aka picoinit).
 type serviceManagerImpl struct {
 	// Logger used by the service manager.
-	log                 zzzlogi.Logger
+	log zzzlogi.Logger
 	// True if shutting down, false otherwise.
-	shuttingDown        bool
+	shuttingDown bool
 	// True if more than one service is being managed by the service
 	// manager, false otherwise.
-	multiServiceMode    bool
+	multiServiceMode bool
 	// Final exit status code to return.
-	finalExitCode       int
+	finalExitCode int
 	// The channel used to receive notifications about signals from the OS.
-	sigCh               chan os.Signal
+	sigCh chan os.Signal
 	// The channel used to receive notification about the first service
 	// that gets terminated.
 	serviceTermWaiterCh chan *launchedServiceInfo
