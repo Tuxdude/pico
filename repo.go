@@ -7,8 +7,8 @@ import (
 	"github.com/tuxdude/zzzlogi"
 )
 
-// launchedServiceInfo stores information about a single launched service.
-type launchedServiceInfo struct {
+// launchedService stores information about a single launched service.
+type launchedService struct {
 	// pid of the launched service.
 	pid int
 	// Service information.
@@ -16,7 +16,7 @@ type launchedServiceInfo struct {
 }
 
 // Strings returns the string representation of launched service information.
-func (l *launchedServiceInfo) String() string {
+func (l *launchedService) String() string {
 	return fmt.Sprintf(
 		"{pid: %d cmd: %q args: %q}",
 		l.pid,
@@ -33,20 +33,20 @@ type serviceRepo struct {
 	// Mutex controlling access to the service list.
 	mu sync.Mutex
 	// List of services.
-	services map[int]*launchedServiceInfo
+	services map[int]*launchedService
 }
 
 // newServiceRepo instantiates a new service repository.
 func newServiceRepo(log zzzlogi.Logger) *serviceRepo {
 	return &serviceRepo{
 		log:      log,
-		services: make(map[int]*launchedServiceInfo),
+		services: make(map[int]*launchedService),
 	}
 }
 
 // addService adds the specified the launched service to the service list
 // in the repository.
-func (s *serviceRepo) addService(proc *launchedServiceInfo) {
+func (s *serviceRepo) addService(proc *launchedService) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (s *serviceRepo) addService(proc *launchedServiceInfo) {
 // removeService removes the launched service from the service list in the
 // repository based on the specified pid. If the pid doesn't match one of
 // the services in the repository, the call is a no-op.
-func (s *serviceRepo) removeService(pid int) (*launchedServiceInfo, bool) {
+func (s *serviceRepo) removeService(pid int) (*launchedService, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if proc, ok := s.services[pid]; ok {

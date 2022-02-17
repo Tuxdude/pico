@@ -19,7 +19,7 @@ type serviceLauncher struct {
 }
 
 type launcherRepo interface {
-	addService(serv *launchedServiceInfo)
+	addService(serv *launchedService)
 }
 
 // newServiceLauncher instantiates a service launcher.
@@ -75,7 +75,7 @@ func (s *serviceLauncher) startService(multiServiceMode bool, bin string, args .
 		}
 	}
 
-	proc := &launchedServiceInfo{}
+	proc := &launchedService{}
 	proc.pid = cmd.Process.Pid
 	proc.service.Cmd = bin
 	proc.service.Args = make([]string, len(args))

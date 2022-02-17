@@ -87,7 +87,7 @@ type serviceManagerImpl struct {
 	sigHandlerDoneCh chan interface{}
 	// The channel used to receive notification about the first service
 	// that gets terminated.
-	serviceTermWaiterCh chan *launchedServiceInfo
+	serviceTermWaiterCh chan *launchedService
 
 	// Zombie process reaper.
 	reaper *zombieReaper
@@ -126,7 +126,7 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		finalExitCode:       77,
 		sigCh:               make(chan os.Signal, 10),
 		sigHandlerDoneCh:    make(chan interface{}, 1),
-		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
+		serviceTermWaiterCh: make(chan *launchedService, 1),
 	}
 	sm.reaper = newZombieReaper(log)
 	sm.repo = newServiceRepo(log)
@@ -206,7 +206,7 @@ func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 }
 
 // handleServiceTermination handles the termination of the specified service.
-func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo, exitStatus int) {
+func (s *serviceManagerImpl) handleServiceTermination(serv *launchedService, exitStatus int) {
 	s.log.Infof("Service: %v exited, finalExitCode: %d", serv, exitStatus)
 
 	if !s.markShutDown() {
