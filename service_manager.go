@@ -392,7 +392,8 @@ func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 // monitoring resources.
 func (s *serviceManagerImpl) shutDown() {
 	sig := unix.SIGTERM
-	pendingTries := 4
+	totalAttempts := 3
+	pendingTries := totalAttempts + 1
 	for pendingTries > 0 {
 		if pendingTries == 1 {
 			sig = unix.SIGKILL
@@ -403,7 +404,17 @@ func (s *serviceManagerImpl) shutDown() {
 		if count == 0 {
 			break
 		}
-		s.log.Infof("Sent signal %s to %d services", sigInfo(sig), count)
+		if pendingTries > 0 {
+			s.log.Infof(
+				"Graceful termination Attempt [%d/%d] - Sent signal %s to %d services",
+				totalAttempts+1-pendingTries,
+				totalAttempts,
+				sigInfo(sig),
+				count,
+			)
+		} else {
+			s.log.Infof("All graceful termination attempts exhausted, sent signal %s to %d services", sigInfo(sig), count)
+		}
 
 		sleepUntil := time.NewTimer(5 * time.Second)
 		tick := time.NewTicker(10 * time.Millisecond)
