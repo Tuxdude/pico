@@ -174,7 +174,7 @@ func (s *serviceManagerImpl) Wait() int {
 	serv := <-s.serviceTermWaiterCh
 	close(s.serviceTermWaiterCh)
 
-	s.log.Infof("Cleaning up since service: %v terminated", serv)
+	s.log.Infof("Shutting down since service: %v terminated", serv)
 
 	s.shutDown()
 	return s.finalExitCode
@@ -221,7 +221,7 @@ func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.W
 		return nil
 	}
 	if err != nil {
-		s.log.Errorf("Reap Zombies - Got a different unexpected error during wait: %v", err)
+		s.log.Errorf("Zombie Reaper - Got an unexpected error during wait: %v", err)
 		return nil
 	}
 	if pid <= 0 {
@@ -267,7 +267,7 @@ func (s *serviceManagerImpl) signalHandler() {
 	for {
 		sig, ok := <-s.sigCh
 		if !ok {
-			s.log.Infof("Signal handler is exiting ...")
+			s.log.Debugf("Signal handler is exiting ...")
 			return
 		}
 
@@ -354,7 +354,7 @@ func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 
 	count := len(s.services)
 	if count > 0 {
-		s.log.Infof("Signal Forwader - Chaining signal: %q to %d services", sig, count)
+		s.log.Infof("Signal Forwader - Multicasting signal: %q to %d services", sig, count)
 	}
 
 	for pid := range s.services {
