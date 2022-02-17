@@ -115,8 +115,13 @@ func (r *reapedProcInfo) String() string {
 // NewServiceManager instantiates an InitServiceManager along with
 // performing the necessary initialization.
 func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServiceManager, error) {
+	multiServiceMode := false
+	if len(services) > 1 {
+		multiServiceMode = true
+	}
 	sm := &serviceManagerImpl{
 		log:                 log,
+		multiServiceMode:    multiServiceMode,
 		finalExitCode:       77,
 		sigCh:               make(chan os.Signal, 10),
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
@@ -253,13 +258,6 @@ func (s *serviceManagerImpl) signalHandler() {
 func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
-	if !s.multiServiceMode {
-		if len(s.services) == 1 {
-			s.multiServiceMode = true
-		} else if len(s.services) != 0 {
-			s.log.Fatalf("Number of existing services is neither 0 or 1, yet multiServiceMode is set to false! len: %d", len(s.services))
-		}
-	}
 
 	s.services[proc.pid] = proc
 	s.log.Debugf("Added pid: %d to the list of services", proc.pid)
