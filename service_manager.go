@@ -18,8 +18,6 @@ type serviceManagerImpl struct {
 	// that gets terminated.
 	serviceTermNotificationCh <-chan *terminatedService
 
-	// Zombie process reaper.
-	reaper *zombieReaper
 	// Service repository.
 	repo *serviceRepo
 	// Service janitor.
@@ -41,9 +39,8 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		log: log,
 	}
 	sm.repo = newServiceRepo(log)
-	sm.reaper = newZombieReaper(log)
 	sm.janitor, sm.serviceTermNotificationCh = newServiceJanitor(log, sm.repo, multiServiceMode)
-	sm.signals = newSignalManager(log, sm.repo, sm.reaper, sm.janitor)
+	sm.signals = newSignalManager(log, sm.repo, newZombieReaper(log), sm.janitor)
 
 	err := launchServices(log, sm.repo, services...)
 	if err != nil {
