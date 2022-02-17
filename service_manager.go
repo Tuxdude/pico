@@ -78,8 +78,6 @@ type ServiceInfo struct {
 type serviceManagerImpl struct {
 	// Logger used by the service manager.
 	log zzzlogi.Logger
-	// True if shutting down, false otherwise.
-	shuttingDown bool
 	// True if more than one service is being managed by the service
 	// manager, false otherwise.
 	multiServiceMode bool
@@ -93,8 +91,15 @@ type serviceManagerImpl struct {
 	// that gets terminated.
 	serviceTermWaiterCh chan *launchedServiceInfo
 
+	// Mutex controlling access to the field shuttingDown.
+	stateMu sync.Mutex
+	// True if shutting down, false otherwise.
+	shuttingDown bool
+
+	// Mutex controlling access to the field services.
 	servicesMu sync.Mutex
-	services   map[int]*launchedServiceInfo
+	// List of services.
+	services map[int]*launchedServiceInfo
 }
 
 // launchedServiceInfo stores information about a single launched service.
@@ -327,11 +332,11 @@ func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 // handleServiceTermination handles the termination of the specified service.
 func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo, exitStatus int) {
 	s.log.Infof("Service: %v exited, finalExitCode: %d", serv, exitStatus)
-	if s.shuttingDown {
+
+	if !s.markShutDown() {
 		// We are already in the middle of a shut down, nothing more to do.
 		return
 	}
-	s.shuttingDown = true
 
 	if !s.multiServiceMode {
 		// In single service mode persist the exit code same as the
@@ -351,6 +356,16 @@ func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo,
 
 	// Wake up the waiter goroutine to handle the rest.
 	s.serviceTermWaiterCh <- serv
+}
+
+func (s *serviceManagerImpl) markShutDown() bool {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.shuttingDown {
+		return false
+	}
+	s.shuttingDown = true
+	return true
 }
 
 // multicastSig forwards the specified signal to all running services managed by
