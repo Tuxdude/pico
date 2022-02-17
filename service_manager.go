@@ -73,6 +73,8 @@ type ServiceInfo struct {
 	Args []string
 }
 
+// serviceManagerImpl is the implementation of the combo init and service
+// manager (aka picoinit).
 type serviceManagerImpl struct {
 	log                 zzzlogi.Logger
 	shuttingDown        bool
@@ -85,20 +87,29 @@ type serviceManagerImpl struct {
 	services   map[int]*launchedServiceInfo
 }
 
+// launchedServiceInfo stores information about a single launched service.
 type launchedServiceInfo struct {
-	pid     int
+	// pid of the launched service.
+	pid int
+	// Service information.
 	service ServiceInfo
 }
 
+// reapedProcInfo stores information about a single reaped process.
 type reapedProcInfo struct {
-	pid        int
+	// pid of the reaped process.
+	pid int
+	// Wait status obtained from the wait system call while reaping
+	// the process.
 	waitStatus unix.WaitStatus
 }
 
+// String returns the string representation of service information.
 func (s *ServiceInfo) String() string {
 	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
 }
 
+// Strings returns the string representation of launched service information.
 func (l *launchedServiceInfo) String() string {
 	return fmt.Sprintf(
 		"{pid: %d cmd: %q args: %q}",
@@ -108,12 +119,14 @@ func (l *launchedServiceInfo) String() string {
 	)
 }
 
+// String returns the string representation of the reaped process information.
 func (r *reapedProcInfo) String() string {
 	return fmt.Sprintf("{pid: %d waitStatus: %v}", r.pid, r.waitStatus)
 }
 
-// NewServiceManager instantiates an InitServiceManager along with
-// performing the necessary initialization.
+// NewServiceManager instantiates an InitServiceManager, performs the
+// necessary initialization for the init responsibilities, and launches the
+// specified list of services.
 func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServiceManager, error) {
 	multiServiceMode := false
 	if len(services) > 1 {
@@ -153,6 +166,13 @@ func (s *serviceManagerImpl) launchServices(services ...*ServiceInfo) error {
 	return nil
 }
 
+// Wait performs a blocking wait for all the launched services to terminate.
+// Once the first launched service terminates, the service manager initiates
+// the shut down sequence terminating all remaining services and returns
+// the exit status code based on single service mode or multi service mode.
+// In single service mode, the exit status code is the same as that of the
+// service which exited. In multi service mode, the exit status code is the
+// same as the first service which exited if non-zero, 77 otherwise.
 func (s *serviceManagerImpl) Wait() int {
 	// Wait for the first service termination.
 	serv := <-s.serviceTermWaiterCh
@@ -164,6 +184,7 @@ func (s *serviceManagerImpl) Wait() int {
 	return s.finalExitCode
 }
 
+// logProcExitStatus logs the specified process's exit status information.
 func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
 	exitStatus := wstatus.ExitStatus()
 	if !wstatus.Exited() {
@@ -196,6 +217,8 @@ func (s *serviceManagerImpl) logProcExitStatus(pid int, wstatus unix.WaitStatus)
 	}
 }
 
+// parseWait4Result parses the wait status information to build the reaped
+// process information.
 func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProcInfo {
 	if err == unix.ECHILD {
 		// No more children, nothing further to do here.
@@ -216,6 +239,9 @@ func (s *serviceManagerImpl) parseWait4Result(pid int, err error, wstatus unix.W
 	}
 }
 
+// reapZombies reaps zombie child processes if any by performing one or more
+// non-blocking wait system calls, and returns once there are no further
+// zombie child processes left.
 func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
 	s.log.Debugf("Zombie Reaper - Received signal: %q", unix.SIGCHLD)
 
@@ -237,6 +263,9 @@ func (s *serviceManagerImpl) reapZombies() []*reapedProcInfo {
 	return result
 }
 
+// signalHandler registers signals to get notified on, and blocks in a loop
+// to receive and handle signals. If sigCh is closed, the loop terminates
+// and control exits this function.
 func (s *serviceManagerImpl) signalHandler() {
 	signal.Notify(s.sigCh, listeningSigs...)
 	for {
@@ -255,6 +284,7 @@ func (s *serviceManagerImpl) signalHandler() {
 	}
 }
 
+// addService adds the specified the launched service to the service list.
 func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
@@ -263,6 +293,9 @@ func (s *serviceManagerImpl) addService(proc *launchedServiceInfo) {
 	s.log.Debugf("Added pid: %d to the list of services", proc.pid)
 }
 
+// removeService removes the launched service from the service list based on
+// the specified pid. If the pid doesn't match one of the launched services,
+// the call is a no-op.
 func (s *serviceManagerImpl) removeService(pid int) (*launchedServiceInfo, bool) {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
@@ -274,6 +307,7 @@ func (s *serviceManagerImpl) removeService(pid int) (*launchedServiceInfo, bool)
 	return nil, false
 }
 
+// handleProcTermination handles the termination of the specified processes.
 func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
@@ -287,6 +321,7 @@ func (s *serviceManagerImpl) handleProcTermination(procs []*reapedProcInfo) {
 	}
 }
 
+// handleServiceTermination handles the termination of the specified service.
 func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo, exitStatus int) {
 	s.log.Infof("Service: %v exited, finalExitCode: %d", serv, exitStatus)
 	if s.shuttingDown {
@@ -315,6 +350,8 @@ func (s *serviceManagerImpl) handleServiceTermination(serv *launchedServiceInfo,
 	s.serviceTermWaiterCh <- serv
 }
 
+// multicastSig forwards the specified signal to all running services managed by
+// the service manager.
 func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
@@ -333,12 +370,16 @@ func (s *serviceManagerImpl) multicastSig(sig os.Signal) int {
 	return count
 }
 
+// serviceCount returns the count of running services managed by the
+// service manager.
 func (s *serviceManagerImpl) serviceCount() int {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
 	return len(s.services)
 }
 
+// launchService launches the specified service binary invoking it with the
+// specified list of command line arguments.
 func (s *serviceManagerImpl) launchService(bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
