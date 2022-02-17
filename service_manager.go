@@ -87,6 +87,8 @@ type serviceManagerImpl struct {
 	finalExitCode int
 	// The channel used to receive notifications about signals from the OS.
 	sigCh chan os.Signal
+	// The channel used to notify that the signal handler goroutine has exited.
+	sigHandlerDoneCh chan interface{}
 	// The channel used to receive notification about the first service
 	// that gets terminated.
 	serviceTermWaiterCh chan *launchedServiceInfo
@@ -145,6 +147,7 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		multiServiceMode:    multiServiceMode,
 		finalExitCode:       77,
 		sigCh:               make(chan os.Signal, 10),
+		sigHandlerDoneCh:    make(chan interface{}, 1),
 		serviceTermWaiterCh: make(chan *launchedServiceInfo, 1),
 		services:            make(map[int]*launchedServiceInfo),
 	}
@@ -270,6 +273,8 @@ func (s *serviceManagerImpl) signalHandler(readyCh chan interface{}) {
 		sig, ok := <-s.sigCh
 		if !ok {
 			s.log.Debugf("Signal handler is exiting ...")
+			s.sigHandlerDoneCh <- nil
+			close(s.sigHandlerDoneCh)
 			return
 		}
 
@@ -452,9 +457,18 @@ func (s *serviceManagerImpl) shutDown() {
 
 	signal.Reset()
 	close(s.sigCh)
-	// The tiny sleep will allow the goroutines to exit.
-	// TODO: Replace this by a WaitGroup instead.
-	time.Sleep(10 * time.Millisecond)
+
+	// Wait for the signal handler goroutine to exit gracefully
+	// within a period of 100ms after which we give up and exit
+	// anyway since the rest of the clean up is complete.
+	timeout := time.NewTimer(100 * time.Millisecond)
+	select {
+	case <-s.sigHandlerDoneCh:
+		s.log.Debugf("Signal handler has exited")
+	case <-timeout.C:
+		s.log.Debugf("Signal handler did not exit, giving up and proceeding with termination")
+	}
+	timeout.Stop()
 
 	s.log.Infof("All services have terminated!")
 }
