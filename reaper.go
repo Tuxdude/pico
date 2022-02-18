@@ -32,7 +32,7 @@ func newZombieReaper(log zzzlogi.Logger) *zombieReaper {
 	}
 }
 
-// reapZombies reaps zombie child processes if any by performing one or more
+// reap reaps zombie child processes if any by performing one or more
 // non-blocking wait system calls, and returns once there are no further
 // zombie child processes left.
 func (z *zombieReaper) reap() []*reapedProcInfo {
