@@ -31,7 +31,14 @@ func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 	}
 	init.repo = newServiceRepo(log)
 	init.janitor = newServiceJanitor(log, init.repo, multiServiceMode)
-	init.signals = newSignalManager(log, init.repo, newZombieReaper(log), init.janitor)
+	init.signals = newSignalManager(
+		log,
+		init.repo,
+		newZombieReaper(log),
+		func(proc []*reapedProcInfo) {
+			init.janitor.handleProcTerminaton(proc)
+		},
+	)
 
 	err := launchServices(log, init.repo, services...)
 	if err != nil {

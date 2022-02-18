@@ -54,11 +54,9 @@ type signalManagerReaper interface {
 	reap() []*reapedProcInfo
 }
 
-// signalManagerJanitor is the janitor interface used by signal manager for
+// reapedProcObserver is the janitor interface used by signal manager for
 // notifying the janitor about new process terminations.
-type signalManagerJanitor interface {
-	notifyTerminaton(procs []*reapedProcInfo)
-}
+type reapedProcObserver func(proc []*reapedProcInfo)
 
 // signalManagerRepo is the repository interface used by signal manager for
 // obtaining the list of running service pids.
@@ -77,9 +75,9 @@ type signalManager struct {
 	// The channel used to notify that the signal handler goroutine has exited.
 	sigHandlerDoneCh chan interface{}
 
-	repo    signalManagerRepo
-	reaper  signalManagerReaper
-	janitor signalManagerJanitor
+	repo         signalManagerRepo
+	reaper       signalManagerReaper
+	reapObserver reapedProcObserver
 }
 
 // newSignalManager instantiates a signal manager and initiates the signal handler
@@ -88,7 +86,7 @@ func newSignalManager(
 	log zzzlogi.Logger,
 	repo signalManagerRepo,
 	reaper signalManagerReaper,
-	janitor signalManagerJanitor,
+	reapObserver reapedProcObserver,
 ) *signalManager {
 	sm := &signalManager{
 		log:              log,
@@ -96,7 +94,7 @@ func newSignalManager(
 		sigHandlerDoneCh: make(chan interface{}, 1),
 		repo:             repo,
 		reaper:           reaper,
-		janitor:          janitor,
+		reapObserver:     reapObserver,
 	}
 	sm.start()
 	return sm
@@ -123,7 +121,7 @@ func (s *signalManager) signalHandler(readyCh chan interface{}) {
 		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
 			procs := s.reaper.reap()
-			go s.janitor.notifyTerminaton(procs)
+			go s.reapObserver(procs)
 		} else {
 			go s.multicastSig(sig)
 		}
