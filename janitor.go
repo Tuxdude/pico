@@ -2,15 +2,20 @@ package pico
 
 import (
 	"sync"
+	"time"
 
 	"github.com/tuxdude/zzzlogi"
+	"golang.org/x/sys/unix"
 )
 
+// Service janitor.
 type serviceJanitor struct {
 	// Logger used by the janitor.
 	log zzzlogi.Logger
 	// Service repository.
 	repo janitorRepo
+	// Signal manager.
+	signals janitorSignalManager
 	// True if more than one service is being managed by the service
 	// manager, false otherwise.
 	multiServiceMode bool
@@ -26,6 +31,11 @@ type serviceJanitor struct {
 // the terminated services from the repository.
 type janitorRepo interface {
 	removeService(pid int) (*launchedService, bool)
+	count() int
+}
+
+type janitorSignalManager interface {
+	multicastSig(sig unix.Signal) int
 }
 
 // terminatedService contains information about the launched service that
@@ -36,10 +46,16 @@ type terminatedService struct {
 }
 
 // newServiceJanitor instantiates a new janitor.
-func newServiceJanitor(log zzzlogi.Logger, repo janitorRepo, multiServiceMode bool) *serviceJanitor {
+func newServiceJanitor(
+	log zzzlogi.Logger,
+	repo janitorRepo,
+	signals janitorSignalManager,
+	multiServiceMode bool,
+) *serviceJanitor {
 	return &serviceJanitor{
 		log:                log,
 		repo:               repo,
+		signals:            signals,
 		multiServiceMode:   multiServiceMode,
 		termNotificationCh: make(chan *terminatedService, 1),
 	}
@@ -110,4 +126,50 @@ func (s *serviceJanitor) markShutDown() bool {
 	}
 	s.shuttingDown = true
 	return true
+}
+
+// shutDown terminates any running services launched by Init.
+func (s *serviceJanitor) shutDown() {
+	sig := unix.SIGTERM
+	totalAttempts := 3
+	pendingTries := totalAttempts + 1
+	for pendingTries > 0 {
+		if pendingTries == 1 {
+			sig = unix.SIGKILL
+		}
+		pendingTries--
+
+		count := s.signals.multicastSig(sig)
+		if count == 0 {
+			break
+		}
+		if pendingTries > 0 {
+			s.log.Infof(
+				"Graceful termination Attempt [%d/%d] - Sent signal %s to %d services",
+				totalAttempts+1-pendingTries,
+				totalAttempts,
+				sigInfo(sig),
+				count,
+			)
+		} else {
+			s.log.Infof("All graceful termination attempts exhausted, sent signal %s to %d services", sigInfo(sig), count)
+		}
+
+		sleepUntil := time.NewTimer(5 * time.Second)
+		tick := time.NewTicker(10 * time.Millisecond)
+		keepWaiting := true
+		for keepWaiting {
+			select {
+			case <-tick.C:
+				if s.repo.count() == 0 {
+					keepWaiting = false
+					pendingTries = 0
+				}
+			case <-sleepUntil.C:
+				keepWaiting = false
+			}
+		}
+		sleepUntil.Stop()
+		tick.Stop()
+	}
 }

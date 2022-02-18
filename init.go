@@ -2,10 +2,8 @@ package pico
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/tuxdude/zzzlogi"
-	"golang.org/x/sys/unix"
 )
 
 // initImpl is the implementation of picoinit, the combo init and service
@@ -30,7 +28,6 @@ func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 		log: log,
 	}
 	init.repo = newServiceRepo(log)
-	init.janitor = newServiceJanitor(log, init.repo, multiServiceMode)
 	init.signals = newSignalManager(
 		log,
 		init.repo,
@@ -39,6 +36,7 @@ func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 			init.janitor.handleProcTerminaton(proc)
 		},
 	)
+	init.janitor = newServiceJanitor(log, init.repo, init.signals, multiServiceMode)
 
 	err := launchServices(log, init.repo, services...)
 	if err != nil {
@@ -68,49 +66,7 @@ func (i *initImpl) Wait() int {
 // shutDown terminates any running services launched by Init, unregisters
 // notifications for all signals, and frees up any other monitoring resources.
 func (i *initImpl) shutDown() {
-	sig := unix.SIGTERM
-	totalAttempts := 3
-	pendingTries := totalAttempts + 1
-	for pendingTries > 0 {
-		if pendingTries == 1 {
-			sig = unix.SIGKILL
-		}
-		pendingTries--
-
-		count := i.signals.multicastSig(sig)
-		if count == 0 {
-			break
-		}
-		if pendingTries > 0 {
-			i.log.Infof(
-				"Graceful termination Attempt [%d/%d] - Sent signal %s to %d services",
-				totalAttempts+1-pendingTries,
-				totalAttempts,
-				sigInfo(sig),
-				count,
-			)
-		} else {
-			i.log.Infof("All graceful termination attempts exhausted, sent signal %s to %d services", sigInfo(sig), count)
-		}
-
-		sleepUntil := time.NewTimer(5 * time.Second)
-		tick := time.NewTicker(10 * time.Millisecond)
-		keepWaiting := true
-		for keepWaiting {
-			select {
-			case <-tick.C:
-				if i.repo.count() == 0 {
-					keepWaiting = false
-					pendingTries = 0
-				}
-			case <-sleepUntil.C:
-				keepWaiting = false
-			}
-		}
-		sleepUntil.Stop()
-		tick.Stop()
-	}
-
+	i.janitor.shutDown()
 	i.signals.shutDown()
 	i.log.Infof("All services have terminated!")
 }
