@@ -45,8 +45,9 @@ func newServiceJanitor(log zzzlogi.Logger, repo janitorRepo, multiServiceMode bo
 	}
 }
 
-// handleProcTermination handles the termination of the specified processes.
-func (s *serviceJanitor) handleProcTermination(procs []*reapedProcInfo) {
+// notifyTerminaton handles the notifications from the signal manager for
+// termination of the specified processes.
+func (s *serviceJanitor) notifyTerminaton(procs []*reapedProcInfo) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
 		// We could be reaping processes that weren't one of the service processes

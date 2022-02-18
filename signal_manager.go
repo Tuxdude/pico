@@ -57,7 +57,7 @@ type signalManagerReaper interface {
 // signalManagerJanitor is the janitor interface used by signal manager for
 // notifying the janitor about new process terminations.
 type signalManagerJanitor interface {
-	handleProcTermination(procs []*reapedProcInfo)
+	notifyTerminaton(procs []*reapedProcInfo)
 }
 
 // signalManagerRepo is the repository interface used by signal manager for
@@ -123,7 +123,7 @@ func (s *signalManager) signalHandler(readyCh chan interface{}) {
 		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
 			procs := s.reaper.reap()
-			go s.janitor.handleProcTermination(procs)
+			go s.janitor.notifyTerminaton(procs)
 		} else {
 			go s.multicastSig(sig)
 		}
