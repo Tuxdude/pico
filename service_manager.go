@@ -25,11 +25,7 @@ type serviceManagerImpl struct {
 // necessary initialization for the init responsibilities, and launches the
 // specified list of services.
 func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServiceManager, error) {
-	multiServiceMode := false
-	if len(services) > 1 {
-		multiServiceMode = true
-	}
-
+	multiServiceMode := len(services) > 1
 	sm := &serviceManagerImpl{
 		log: log,
 	}

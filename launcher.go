@@ -36,11 +36,7 @@ func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*ServiceI
 
 // launch launches the specified list of services.
 func (s *serviceLauncher) launch(services ...*ServiceInfo) error {
-	multiServiceMode := false
-	if len(services) > 1 {
-		multiServiceMode = true
-	}
-
+	multiServiceMode := len(services) > 1
 	for _, serv := range services {
 		err := s.startService(multiServiceMode, serv.Cmd, serv.Args...)
 		if err != nil {
