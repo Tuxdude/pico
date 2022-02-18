@@ -79,6 +79,10 @@ func (s *serviceJanitor) handleProcTerminaton(procs []*reapedProcInfo) {
 // service information along with its exit status.
 func (s *serviceJanitor) wait() (*launchedService, int) {
 	t := <-s.termNotificationCh
+	if t == nil {
+		s.log.Warnf("Service termination notification channel closed Unexpectedly, possibly indicates a bug")
+		return nil, 77
+	}
 	return t.service, t.exitStatus
 }
 
