@@ -3,11 +3,10 @@ package pico
 
 import "fmt"
 
-// InitServiceManager manages init responsibility in a system (by reaping
-// processes which get parented to pid 1), and allows launching/managing
-// services (including forwarding signals to them from the process where
-// InitServiceManager is running).
-type InitServiceManager interface {
+// Init manages init responsibility in a system (by reaping processes which
+// get parented to pid 1), and allows launching/managing services (including
+// forwarding signals to them from the process where Init is running).
+type Init interface {
 	// Wait initiates the blocking wait of the init process. The
 	// call doesn't return until all the services have terminated.
 	// The return value indicates the final exit status to be used.

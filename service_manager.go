@@ -24,7 +24,7 @@ type serviceManagerImpl struct {
 // NewServiceManager instantiates an InitServiceManager, performs the
 // necessary initialization for the init responsibilities, and launches the
 // specified list of services.
-func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServiceManager, error) {
+func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (Init, error) {
 	multiServiceMode := len(services) > 1
 	sm := &serviceManagerImpl{
 		log: log,
