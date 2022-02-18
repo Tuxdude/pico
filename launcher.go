@@ -26,7 +26,7 @@ type launcherRepo interface {
 
 // launchServices launches the specified list of services and updates the
 // service list in the specified repository.
-func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*ServiceInfo) error {
+func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*Service) error {
 	sl := &serviceLauncher{
 		log:  log,
 		repo: repo,
@@ -35,7 +35,7 @@ func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*ServiceI
 }
 
 // launch launches the specified list of services.
-func (s *serviceLauncher) launch(services ...*ServiceInfo) error {
+func (s *serviceLauncher) launch(services ...*Service) error {
 	multiServiceMode := len(services) > 1
 	for _, serv := range services {
 		err := s.startService(multiServiceMode, serv.Cmd, serv.Args...)

@@ -12,7 +12,7 @@ type launchedService struct {
 	// pid of the launched service.
 	pid int
 	// Service information.
-	service ServiceInfo
+	service Service
 }
 
 // Strings returns the string representation of launched service information.

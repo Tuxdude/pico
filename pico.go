@@ -13,9 +13,9 @@ type Init interface {
 	Wait() int
 }
 
-// ServiceInfo represents the service that will be managed by
+// Service represents the service that will be managed by
 // InitServiceManager.
-type ServiceInfo struct {
+type Service struct {
 	// The full path to the binary for launching this service.
 	Cmd string
 	// The list of command line arguments that will need to be passed
@@ -24,6 +24,6 @@ type ServiceInfo struct {
 }
 
 // String returns the string representation of service information.
-func (s *ServiceInfo) String() string {
+func (s *Service) String() string {
 	return fmt.Sprintf("{Cmd: %q Args: %v}", s.Cmd, s.Args)
 }
