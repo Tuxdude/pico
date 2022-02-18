@@ -19,7 +19,7 @@ type serviceJanitor struct {
 	// True if shutting down, false otherwise.
 	shuttingDown bool
 	// Service termination notification channel.
-	termNotificationCh chan<- *terminatedService
+	termNotificationCh chan *terminatedService
 }
 
 // janitorRepo is the repository interface used by the janitor to remove
@@ -36,15 +36,13 @@ type terminatedService struct {
 }
 
 // newServiceJanitor instantiates a new janitor.
-func newServiceJanitor(log zzzlogi.Logger, repo janitorRepo, multiServiceMode bool) (*serviceJanitor, <-chan *terminatedService) {
-	sj := &serviceJanitor{
-		log:              log,
-		repo:             repo,
-		multiServiceMode: multiServiceMode,
+func newServiceJanitor(log zzzlogi.Logger, repo janitorRepo, multiServiceMode bool) *serviceJanitor {
+	return &serviceJanitor{
+		log:                log,
+		repo:               repo,
+		multiServiceMode:   multiServiceMode,
+		termNotificationCh: make(chan *terminatedService, 1),
 	}
-	ch := make(chan *terminatedService, 1)
-	sj.termNotificationCh = ch
-	return sj, ch
 }
 
 // handleProcTermination handles the termination of the specified processes.
@@ -59,6 +57,13 @@ func (s *serviceJanitor) handleProcTermination(procs []*reapedProcInfo) {
 			s.handleServiceTermination(serv, proc.waitStatus.ExitStatus())
 		}
 	}
+}
+
+// wait waits till the first service terminates and returns the terminated
+// service information along with its exit status.
+func (s *serviceJanitor) wait() (*launchedService, int) {
+	t := <-s.termNotificationCh
+	return t.service, t.exitStatus
 }
 
 // handleServiceTermination handles the termination of the specified service.

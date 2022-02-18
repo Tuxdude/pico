@@ -13,11 +13,6 @@ import (
 type serviceManagerImpl struct {
 	// Logger used by the service manager.
 	log zzzlogi.Logger
-
-	// The channel used to receive notification about the first service
-	// that gets terminated.
-	serviceTermNotificationCh <-chan *terminatedService
-
 	// Service repository.
 	repo *serviceRepo
 	// Service janitor.
@@ -39,7 +34,7 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 		log: log,
 	}
 	sm.repo = newServiceRepo(log)
-	sm.janitor, sm.serviceTermNotificationCh = newServiceJanitor(log, sm.repo, multiServiceMode)
+	sm.janitor = newServiceJanitor(log, sm.repo, multiServiceMode)
 	sm.signals = newSignalManager(log, sm.repo, newZombieReaper(log), sm.janitor)
 
 	err := launchServices(log, sm.repo, services...)
@@ -60,13 +55,11 @@ func NewServiceManager(log zzzlogi.Logger, services ...*ServiceInfo) (InitServic
 // service which exited. In multi service mode, the exit status is the
 // same as the first service which exited if non-zero, 77 otherwise.
 func (s *serviceManagerImpl) Wait() int {
-	// Wait for the first service termination.
-	t := <-s.serviceTermNotificationCh
-
-	s.log.Infof("Shutting down since service: %v terminated", t.service)
+	serv, exitStatus := s.janitor.wait()
+	s.log.Infof("Shutting down since service: %v terminated", serv)
 
 	s.shutDown()
-	return t.exitStatus
+	return exitStatus
 }
 
 // shutDown terminates any running services launched by InitServiceManager,
