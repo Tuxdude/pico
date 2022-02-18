@@ -21,10 +21,10 @@ type serviceManagerImpl struct {
 	signals *signalManager
 }
 
-// NewServiceManager instantiates an InitServiceManager, performs the
+// NewInit instantiates a Pico Init/Service Manager combo, performs the
 // necessary initialization for the init responsibilities, and launches the
 // specified list of services.
-func NewServiceManager(log zzzlogi.Logger, services ...*Service) (Init, error) {
+func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 	multiServiceMode := len(services) > 1
 	sm := &serviceManagerImpl{
 		log: log,
@@ -58,9 +58,8 @@ func (s *serviceManagerImpl) Wait() int {
 	return exitStatus
 }
 
-// shutDown terminates any running services launched by InitServiceManager,
-// unregisters notifications for all signals, and frees up any other
-// monitoring resources.
+// shutDown terminates any running services launched by Init, unregisters
+// notifications for all signals, and frees up any other monitoring resources.
 func (s *serviceManagerImpl) shutDown() {
 	sig := unix.SIGTERM
 	totalAttempts := 3
