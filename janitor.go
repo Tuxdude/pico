@@ -130,6 +130,8 @@ func (s *serviceJanitor) markShutDown() bool {
 
 // shutDown terminates any running services launched by Init.
 func (s *serviceJanitor) shutDown() {
+	s.markShutDown()
+
 	sig := unix.SIGTERM
 	totalAttempts := 3
 	pendingTries := totalAttempts + 1

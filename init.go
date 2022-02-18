@@ -40,7 +40,6 @@ func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 
 	err := launchServices(log, init.repo, services...)
 	if err != nil {
-		init.janitor.markShutDown()
 		init.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
 	}
