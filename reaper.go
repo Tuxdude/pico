@@ -7,8 +7,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// reapedProcInfo stores information about a single reaped process.
-type reapedProcInfo struct {
+// reapedProc stores information about a single reaped process.
+type reapedProc struct {
 	// pid of the reaped process.
 	pid int
 	// Wait status obtained from the wait system call while reaping
@@ -17,7 +17,7 @@ type reapedProcInfo struct {
 }
 
 // String returns the string representation of the reaped process information.
-func (r *reapedProcInfo) String() string {
+func (r *reapedProc) String() string {
 	return fmt.Sprintf("{pid: %d waitStatus: %v}", r.pid, r.waitStatus)
 }
 
@@ -35,8 +35,8 @@ func newZombieReaper(log zzzlogi.Logger) *zombieReaper {
 // reap reaps zombie child processes if any by performing one or more
 // non-blocking wait system calls, and returns once there are no further
 // zombie child processes left.
-func (z *zombieReaper) reap() []*reapedProcInfo {
-	var result []*reapedProcInfo
+func (z *zombieReaper) reap() []*reapedProc {
+	var result []*reapedProc
 	for {
 		var wstatus unix.WaitStatus
 		var pid int
@@ -89,7 +89,7 @@ func (z *zombieReaper) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
 
 // parseWait4Result parses the wait status information to build the reaped
 // process information.
-func (z *zombieReaper) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProcInfo {
+func (z *zombieReaper) parseWait4Result(pid int, err error, wstatus unix.WaitStatus) *reapedProc {
 	if err == unix.ECHILD {
 		// No more children, nothing further to do here.
 		return nil
@@ -103,7 +103,7 @@ func (z *zombieReaper) parseWait4Result(pid int, err error, wstatus unix.WaitSta
 	}
 
 	z.logProcExitStatus(pid, wstatus)
-	return &reapedProcInfo{
+	return &reapedProc{
 		pid:        pid,
 		waitStatus: wstatus,
 	}

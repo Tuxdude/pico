@@ -62,7 +62,7 @@ func newServiceJanitor(
 }
 
 // handleProcTerminaton handles the termination of the specified processes.
-func (s *serviceJanitor) handleProcTerminaton(procs []*reapedProcInfo) {
+func (s *serviceJanitor) handleProcTerminaton(procs []*reapedProc) {
 	for _, proc := range procs {
 		s.log.Debugf("Observed reaped pid: %d wstatus: %v", proc.pid, proc.waitStatus)
 		// We could be reaping processes that weren't one of the service processes

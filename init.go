@@ -32,7 +32,7 @@ func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 		log,
 		init.repo,
 		newZombieReaper(log),
-		func(proc []*reapedProcInfo) {
+		func(proc []*reapedProc) {
 			init.janitor.handleProcTerminaton(proc)
 		},
 	)

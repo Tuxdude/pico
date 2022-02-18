@@ -51,12 +51,12 @@ var (
 // signalManagerReaper is the reaper interface used by signal manager for
 // reaping processes.
 type signalManagerReaper interface {
-	reap() []*reapedProcInfo
+	reap() []*reapedProc
 }
 
 // reapedProcObserver is the janitor interface used by signal manager for
 // notifying the janitor about new process terminations.
-type reapedProcObserver func(proc []*reapedProcInfo)
+type reapedProcObserver func(proc []*reapedProc)
 
 // signalManagerRepo is the repository interface used by signal manager for
 // obtaining the list of running service pids.
