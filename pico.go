@@ -13,8 +13,7 @@ type Init interface {
 	Wait() int
 }
 
-// Service represents the service that will be managed by
-// InitServiceManager.
+// Service represents the service that will be managed by Init.
 type Service struct {
 	// The full path to the binary for launching this service.
 	Cmd string
