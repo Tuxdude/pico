@@ -8,10 +8,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// serviceManagerImpl is the implementation of the combo init and service
-// manager (aka picoinit).
-type serviceManagerImpl struct {
-	// Logger used by the service manager.
+// initImpl is the implementation of picoinit, the combo init and service
+// manager.
+type initImpl struct {
+	// Logger used by init.
 	log zzzlogi.Logger
 	// Service repository.
 	repo *serviceRepo
@@ -26,41 +26,41 @@ type serviceManagerImpl struct {
 // specified list of services.
 func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 	multiServiceMode := len(services) > 1
-	sm := &serviceManagerImpl{
+	init := &initImpl{
 		log: log,
 	}
-	sm.repo = newServiceRepo(log)
-	sm.janitor = newServiceJanitor(log, sm.repo, multiServiceMode)
-	sm.signals = newSignalManager(log, sm.repo, newZombieReaper(log), sm.janitor)
+	init.repo = newServiceRepo(log)
+	init.janitor = newServiceJanitor(log, init.repo, multiServiceMode)
+	init.signals = newSignalManager(log, init.repo, newZombieReaper(log), init.janitor)
 
-	err := launchServices(log, sm.repo, services...)
+	err := launchServices(log, init.repo, services...)
 	if err != nil {
-		sm.janitor.markShutDown()
-		sm.shutDown()
+		init.janitor.markShutDown()
+		init.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
 	}
 
-	return sm, nil
+	return init, nil
 }
 
 // Wait performs a blocking wait for all the launched services to terminate.
-// Once the first launched service terminates, the service manager initiates
-// the shut down sequence terminating all remaining services and returns
-// the exit status based on single service mode or multi service mode.
+// Once the first launched service terminates, init initiates the shut down
+// sequence terminating all remaining services and returns the exit status
+// based on single service mode or multi service mode.
 // In single service mode, the exit status is the same as that of the
 // service which exited. In multi service mode, the exit status is the
 // same as the first service which exited if non-zero, 77 otherwise.
-func (s *serviceManagerImpl) Wait() int {
-	serv, exitStatus := s.janitor.wait()
-	s.log.Infof("Shutting down since service: %v terminated", serv)
+func (i *initImpl) Wait() int {
+	serv, exitStatus := i.janitor.wait()
+	i.log.Infof("Shutting down since service: %v terminated", serv)
 
-	s.shutDown()
+	i.shutDown()
 	return exitStatus
 }
 
 // shutDown terminates any running services launched by Init, unregisters
 // notifications for all signals, and frees up any other monitoring resources.
-func (s *serviceManagerImpl) shutDown() {
+func (i *initImpl) shutDown() {
 	sig := unix.SIGTERM
 	totalAttempts := 3
 	pendingTries := totalAttempts + 1
@@ -70,12 +70,12 @@ func (s *serviceManagerImpl) shutDown() {
 		}
 		pendingTries--
 
-		count := s.signals.multicastSig(sig)
+		count := i.signals.multicastSig(sig)
 		if count == 0 {
 			break
 		}
 		if pendingTries > 0 {
-			s.log.Infof(
+			i.log.Infof(
 				"Graceful termination Attempt [%d/%d] - Sent signal %s to %d services",
 				totalAttempts+1-pendingTries,
 				totalAttempts,
@@ -83,7 +83,7 @@ func (s *serviceManagerImpl) shutDown() {
 				count,
 			)
 		} else {
-			s.log.Infof("All graceful termination attempts exhausted, sent signal %s to %d services", sigInfo(sig), count)
+			i.log.Infof("All graceful termination attempts exhausted, sent signal %s to %d services", sigInfo(sig), count)
 		}
 
 		sleepUntil := time.NewTimer(5 * time.Second)
@@ -92,7 +92,7 @@ func (s *serviceManagerImpl) shutDown() {
 		for keepWaiting {
 			select {
 			case <-tick.C:
-				if s.repo.count() == 0 {
+				if i.repo.count() == 0 {
 					keepWaiting = false
 					pendingTries = 0
 				}
@@ -104,6 +104,6 @@ func (s *serviceManagerImpl) shutDown() {
 		tick.Stop()
 	}
 
-	s.signals.shutDown()
-	s.log.Infof("All services have terminated!")
+	i.signals.shutDown()
+	i.log.Infof("All services have terminated!")
 }
