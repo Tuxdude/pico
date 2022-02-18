@@ -85,7 +85,6 @@ type signalManager struct {
 func newSignalManager(
 	log zzzlogi.Logger,
 	repo signalManagerRepo,
-	reaper signalManagerReaper,
 	reapObserver reapedProcObserver,
 ) *signalManager {
 	sm := &signalManager{
@@ -93,7 +92,7 @@ func newSignalManager(
 		sigCh:            make(chan os.Signal, 10),
 		sigHandlerDoneCh: make(chan interface{}, 1),
 		repo:             repo,
-		reaper:           reaper,
+		reaper:           newZombieReaper(log),
 		reapObserver:     reapObserver,
 	}
 	sm.start()

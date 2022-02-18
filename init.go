@@ -27,20 +27,15 @@ type initImpl struct {
 func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
 	multiServiceMode := len(services) > 1
 	init := &initImpl{
-		log: log,
+		log:   log,
 		state: newStateMachine(log),
 	}
 
 	init.state.set(stateInitializing)
 	init.repo = newServiceRepo(log)
-	init.signals = newSignalManager(
-		log,
-		init.repo,
-		newZombieReaper(log),
-		func(proc []*reapedProc) {
-			init.janitor.handleProcTerminaton(proc)
-		},
-	)
+	init.signals = newSignalManager(log, init.repo, func(proc []*reapedProc) {
+		init.janitor.handleProcTerminaton(proc)
+	})
 	init.janitor = newServiceJanitor(log, init.repo, init.signals, multiServiceMode)
 
 	init.state.set(stateLaunchingServices)
