@@ -14,8 +14,6 @@ type serviceJanitor struct {
 	log zzzlogi.Logger
 	// Service repository.
 	repo janitorRepo
-	// Signal manager.
-	signals janitorSignalManager
 	// True if more than one service is being managed by the service
 	// manager, false otherwise.
 	multiServiceMode bool
@@ -49,13 +47,11 @@ type terminatedService struct {
 func newServiceJanitor(
 	log zzzlogi.Logger,
 	repo janitorRepo,
-	signals janitorSignalManager,
 	multiServiceMode bool,
 ) *serviceJanitor {
 	return &serviceJanitor{
 		log:                log,
 		repo:               repo,
-		signals:            signals,
 		multiServiceMode:   multiServiceMode,
 		termNotificationCh: make(chan *terminatedService, 1),
 	}
@@ -133,7 +129,7 @@ func (s *serviceJanitor) markShutDown() bool {
 }
 
 // shutDown terminates any running services launched by Init.
-func (s *serviceJanitor) shutDown() {
+func (s *serviceJanitor) shutDown(signals janitorSignalManager) {
 	s.markShutDown()
 
 	sig := unix.SIGTERM
@@ -145,7 +141,7 @@ func (s *serviceJanitor) shutDown() {
 		}
 		pendingTries--
 
-		count := s.signals.multicastSig(sig)
+		count := signals.multicastSig(sig)
 		if count == 0 {
 			break
 		}
