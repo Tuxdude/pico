@@ -37,10 +37,9 @@ func NewInit(config *InitConfig) (Init, error) {
 
 	init.state.set(stateInitializing)
 	init.repo = newServiceRepo(config.Log)
-	init.signals = newSignalManager(config.Log, init.repo, func(proc []*reapedProc) {
-		init.janitor.handleProcTerminaton(proc)
-	})
+	init.signals = newSignalManager(config.Log, init.repo)
 	init.janitor = newServiceJanitor(config.Log, init.repo, multiServiceMode)
+	init.signals.setReapObserver(init.janitor.handleProcTerminaton)
 
 	init.state.set(stateLaunchingPreHook)
 	if config.PreLaunch != nil {
@@ -81,6 +80,7 @@ func (i *initImpl) Wait() int {
 // notifications for all signals, and frees up any other monitoring resources.
 func (i *initImpl) shutDown() {
 	i.state.set(stateTerminatingServices)
+	i.signals.clearReapObserver()
 	i.janitor.shutDown(i.signals)
 
 	i.state.set(stateShuttingDown)

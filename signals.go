@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/tuxdude/zzzlogi"
@@ -75,9 +76,11 @@ type signalManager struct {
 	// The channel used to notify that the signal handler goroutine has exited.
 	sigHandlerDoneCh chan interface{}
 
-	repo         signalManagerRepo
-	reaper       signalManagerReaper
-	reapObserver reapedProcObserver
+	repo   signalManagerRepo
+	reaper signalManagerReaper
+
+	reapObserverMu sync.Mutex
+	reapObserver   reapedProcObserver
 }
 
 // newSignalManager instantiates a signal manager and initiates the signal handler
@@ -85,7 +88,6 @@ type signalManager struct {
 func newSignalManager(
 	log zzzlogi.Logger,
 	repo signalManagerRepo,
-	reapObserver reapedProcObserver,
 ) *signalManager {
 	sm := &signalManager{
 		log:              log,
@@ -93,7 +95,6 @@ func newSignalManager(
 		sigHandlerDoneCh: make(chan interface{}, 1),
 		repo:             repo,
 		reaper:           newZombieReaper(log),
-		reapObserver:     reapObserver,
 	}
 	sm.start()
 	return sm
@@ -119,8 +120,7 @@ func (s *signalManager) signalHandler(readyCh chan interface{}) {
 		sig := osSig.(unix.Signal)
 		s.log.Debugf("Signal Handler received %s", sigInfo(sig))
 		if sig == unix.SIGCHLD {
-			procs := s.reaper.reap()
-			go s.reapObserver(procs)
+			go s.reap()
 		} else {
 			go s.multicastSig(sig)
 		}
@@ -148,6 +148,25 @@ func (s *signalManager) multicastSig(sig unix.Signal) int {
 		}
 	}
 	return count
+}
+
+func (s *signalManager) setReapObserver(obs reapedProcObserver) {
+	s.reapObserverMu.Lock()
+	s.reapObserver = obs
+	s.reapObserverMu.Unlock()
+}
+
+func (s *signalManager) clearReapObserver() {
+	s.setReapObserver(nil)
+}
+
+func (s *signalManager) reap() {
+	s.reapObserverMu.Lock()
+	if s.reapObserver != nil {
+		procs := s.reaper.reap()
+		s.reapObserver(procs)
+	}
+	s.reapObserverMu.Unlock()
 }
 
 // start starts the signal handler goroutine and waits for
