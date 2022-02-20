@@ -35,8 +35,9 @@ func NewInit(config *InitConfig) (Init, error) {
 
 	init.state.set(stateInitializing)
 	repo := newServiceRepo(config.Log)
-	init.signals = newSignalManager(config.Log, repo)
 	init.janitor = newServiceJanitor(config.Log, repo, multiServiceMode)
+	init.signals = newSignalManager(config.Log)
+	init.signals.setRepo(repo)
 	init.signals.setReapObserver(init.janitor.handleProcTerminaton)
 
 	init.state.set(stateLaunchingPreHook)
@@ -82,6 +83,7 @@ func (i *initImpl) shutDown() {
 	i.janitor.shutDown(i.signals)
 
 	i.state.set(stateShuttingDown)
+	i.signals.clearRepo()
 	i.signals.shutDown()
 
 	i.state.set(stateHalted)

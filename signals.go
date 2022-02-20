@@ -76,24 +76,22 @@ type signalManager struct {
 	// The channel used to notify that the signal handler goroutine has exited.
 	sigHandlerDoneCh chan interface{}
 
-	repo   signalManagerRepo
 	reaper signalManagerReaper
 
 	reapObserverMu sync.Mutex
 	reapObserver   reapedProcObserver
+
+	repoMu sync.Mutex
+	repo   signalManagerRepo
 }
 
 // newSignalManager instantiates a signal manager and initiates the signal handler
 // goroutine to monitor signals.
-func newSignalManager(
-	log zzzlogi.Logger,
-	repo signalManagerRepo,
-) *signalManager {
+func newSignalManager(log zzzlogi.Logger) *signalManager {
 	sm := &signalManager{
 		log:              log,
 		sigCh:            make(chan os.Signal, 10),
 		sigHandlerDoneCh: make(chan interface{}, 1),
-		repo:             repo,
 		reaper:           newZombieReaper(log),
 	}
 	sm.start()
@@ -160,6 +158,16 @@ func (s *signalManager) clearReapObserver() {
 	s.setReapObserver(nil)
 }
 
+func (s *signalManager) setRepo(repo signalManagerRepo) {
+	s.repoMu.Lock()
+	s.repo = repo
+	s.repoMu.Unlock()
+}
+
+func (s *signalManager) clearRepo() {
+	s.setRepo(nil)
+}
+
 func (s *signalManager) reap() {
 	s.reapObserverMu.Lock()
 	if s.reapObserver != nil {
@@ -179,6 +187,9 @@ func (s *signalManager) start() {
 
 // shutDown gracefully shuts down the signal handler goroutine.
 func (s *signalManager) shutDown() {
+	s.clearReapObserver()
+	s.clearRepo()
+
 	signal.Reset()
 	close(s.sigCh)
 
