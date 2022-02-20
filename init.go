@@ -13,8 +13,6 @@ type initImpl struct {
 	log zzzlogi.Logger
 	// State machine.
 	state *stateMachine
-	// Service repository.
-	repo *serviceRepo
 	// Service janitor.
 	janitor *serviceJanitor
 	// Signal manager.
@@ -36,9 +34,9 @@ func NewInit(config *InitConfig) (Init, error) {
 	}
 
 	init.state.set(stateInitializing)
-	init.repo = newServiceRepo(config.Log)
-	init.signals = newSignalManager(config.Log, init.repo)
-	init.janitor = newServiceJanitor(config.Log, init.repo, multiServiceMode)
+	repo := newServiceRepo(config.Log)
+	init.signals = newSignalManager(config.Log, repo)
+	init.janitor = newServiceJanitor(config.Log, repo, multiServiceMode)
 	init.signals.setReapObserver(init.janitor.handleProcTerminaton)
 
 	init.state.set(stateLaunchingPreHook)
@@ -51,7 +49,7 @@ func NewInit(config *InitConfig) (Init, error) {
 	}
 
 	init.state.set(stateLaunchingServices)
-	err := launchServices(config.Log, init.repo, config.Services...)
+	err := launchServices(config.Log, repo, config.Services...)
 	if err != nil {
 		init.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
