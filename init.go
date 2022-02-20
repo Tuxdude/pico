@@ -34,20 +34,29 @@ func NewInit(config *InitConfig) (Init, error) {
 	}
 
 	init.state.set(stateInitializing)
-	repo := newServiceRepo(config.Log)
-	init.janitor = newServiceJanitor(config.Log, repo, multiServiceMode)
 	init.signals = newSignalManager(config.Log)
-	init.signals.setRepo(repo)
-	init.signals.setReapObserver(init.janitor.handleProcTerminaton)
 
-	init.state.set(stateLaunchingPreHook)
 	if config.PreLaunch != nil {
-		err := launchHook(config.Log, config.PreLaunch)
+		init.state.set(stateLaunchingPreHook)
+
+		// Build a new repo and janitor just for managing the pre-hook.
+		var repo *serviceRepo
+		init.janitor, repo = buildJanitor(config.Log, init.signals, false)
+
+		err := launchHook(config.Log, repo, config.PreLaunch)
 		if err != nil {
 			init.shutDown()
-			return nil, fmt.Errorf("pre-launch hook failed, reason: %v", err)
+			return nil, fmt.Errorf("failed to launch pre-hook, reason: %v", err)
 		}
+
+		init.janitor.wait()
+		shutDownJanitor(init.signals, init.janitor)
 	}
+
+	// Build the repo and janitor that will be used for managing
+	// the services to be launched.
+	var repo *serviceRepo
+	init.janitor, repo = buildJanitor(config.Log, init.signals, multiServiceMode)
 
 	init.state.set(stateLaunchingServices)
 	err := launchServices(config.Log, repo, config.Services...)
@@ -75,15 +84,29 @@ func (i *initImpl) Wait() int {
 	return exitStatus
 }
 
+func buildJanitor(log zzzlogi.Logger, signals *signalManager, multiServiceMode bool) (*serviceJanitor, *serviceRepo) {
+	signals.clearReapObserver()
+	signals.clearRepo()
+	repo := newServiceRepo(log)
+	janitor := newServiceJanitor(log, repo, multiServiceMode)
+	signals.setRepo(repo)
+	signals.setReapObserver(janitor.handleProcTerminaton)
+	return janitor, repo
+}
+
+func shutDownJanitor(signals *signalManager, janitor *serviceJanitor) {
+	signals.clearReapObserver()
+	janitor.shutDown(signals)
+	signals.clearRepo()
+}
+
 // shutDown terminates any running services launched by Init, unregisters
 // notifications for all signals, and frees up any other monitoring resources.
 func (i *initImpl) shutDown() {
-	i.state.set(stateTerminatingServices)
-	i.signals.clearReapObserver()
-	i.janitor.shutDown(i.signals)
+	i.state.set(stateTerminatingEntities)
+	shutDownJanitor(i.signals, i.janitor)
 
 	i.state.set(stateShuttingDown)
-	i.signals.clearRepo()
 	i.signals.shutDown()
 
 	i.state.set(stateHalted)

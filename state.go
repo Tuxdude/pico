@@ -13,7 +13,7 @@ const (
 	stateLaunchingPreHook
 	stateLaunchingServices
 	stateRunning
-	stateTerminatingServices
+	stateTerminatingEntities
 	stateShuttingDown
 	stateHalted
 )
@@ -25,7 +25,7 @@ var (
 		stateLaunchingPreHook:    "LAUNCHING_PRE_HOOK",
 		stateLaunchingServices:   "LAUNCHING_SERVICES",
 		stateRunning:             "RUNNING",
-		stateTerminatingServices: "TERMINATING_SERVICES",
+		stateTerminatingEntities: "TERMINATING_ENTITIES",
 		stateShuttingDown:        "SHUTTING_DOWN",
 		stateHalted:              "HALTED",
 	}
@@ -34,21 +34,22 @@ var (
 			stateInitializing: true,
 		},
 		stateInitializing: {
-			stateLaunchingPreHook: true,
-			stateShuttingDown:     true,
-		},
-		stateLaunchingPreHook: {
+			stateLaunchingPreHook:  true,
 			stateLaunchingServices: true,
 			stateShuttingDown:      true,
 		},
+		stateLaunchingPreHook: {
+			stateLaunchingServices:   true,
+			stateTerminatingEntities: true,
+		},
 		stateLaunchingServices: {
 			stateRunning:             true,
-			stateTerminatingServices: true,
+			stateTerminatingEntities: true,
 		},
 		stateRunning: {
-			stateTerminatingServices: true,
+			stateTerminatingEntities: true,
 		},
-		stateTerminatingServices: {
+		stateTerminatingEntities: {
 			stateShuttingDown: true,
 		},
 		stateShuttingDown: {

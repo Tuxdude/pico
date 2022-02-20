@@ -26,9 +26,12 @@ type launcherRepo interface {
 
 // launchHook launches the specified hook and waits till it terminates
 // prior to exiting.
-func launchHook(log zzzlogi.Logger, hook *Hook) error {
-	// TODO: Implement this.
-	return nil
+func launchHook(log zzzlogi.Logger, repo launcherRepo, hook *Hook) error {
+	sl := &serviceLauncher{
+		log:  log,
+		repo: repo,
+	}
+	return sl.startService(false, hook.Cmd, hook.Args...)
 }
 
 // launchServices launches the specified list of services and updates the
@@ -38,11 +41,12 @@ func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*Service)
 		log:  log,
 		repo: repo,
 	}
-	return sl.launch(services...)
+	return sl.launchServices(services...)
 }
 
-// launch launches the specified list of services.
-func (s *serviceLauncher) launch(services ...*Service) error {
+// launchServices launches the specified list of services and updates the
+// service list in the specified repository.
+func (s *serviceLauncher) launchServices(services ...*Service) error {
 	multiServiceMode := len(services) > 1
 	for _, serv := range services {
 		err := s.startService(multiServiceMode, serv.Cmd, serv.Args...)
@@ -53,7 +57,7 @@ func (s *serviceLauncher) launch(services ...*Service) error {
 	return nil
 }
 
-// launchService launches the specified service binary invoking it with the
+// startService launches the specified service binary invoking it with the
 // specified list of command line arguments.
 func (s *serviceLauncher) startService(multiServiceMode bool, bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
