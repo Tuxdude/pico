@@ -24,6 +24,13 @@ type launcherRepo interface {
 	addService(serv *launchedService)
 }
 
+// launchHook launches the specified hook and waits till it terminates
+// prior to exiting.
+func launchHook(log zzzlogi.Logger, hook *Hook) error {
+	// TODO: Implement this.
+	return nil
+}
+
 // launchServices launches the specified list of services and updates the
 // service list in the specified repository.
 func launchServices(log zzzlogi.Logger, repo launcherRepo, services ...*Service) error {

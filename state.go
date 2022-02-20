@@ -10,6 +10,7 @@ import (
 const (
 	stateInvalid initState = iota
 	stateInitializing
+	stateLaunchingPreHook
 	stateLaunchingServices
 	stateRunning
 	stateTerminatingServices
@@ -21,6 +22,7 @@ var (
 	stateStr = map[initState]string{
 		stateInvalid:             "INVALID",
 		stateInitializing:        "INITIALIZING",
+		stateLaunchingPreHook:    "LAUNCHING_PRE_HOOK",
 		stateLaunchingServices:   "LAUNCHING_SERVICES",
 		stateRunning:             "RUNNING",
 		stateTerminatingServices: "TERMINATING_SERVICES",
@@ -32,6 +34,10 @@ var (
 			stateInitializing: true,
 		},
 		stateInitializing: {
+			stateLaunchingPreHook: true,
+			stateShuttingDown:     true,
+		},
+		stateLaunchingPreHook: {
 			stateLaunchingServices: true,
 			stateShuttingDown:      true,
 		},

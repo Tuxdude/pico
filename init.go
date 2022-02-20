@@ -22,24 +22,37 @@ type initImpl struct {
 }
 
 // NewInit instantiates a Pico Init/Service Manager combo, performs the
-// necessary initialization for the init responsibilities, and launches the
-// specified list of services.
-func NewInit(log zzzlogi.Logger, services ...*Service) (Init, error) {
-	multiServiceMode := len(services) > 1
+// necessary initialization for the init responsibilities, launches the
+// pre-launch hook (if one was specified) and launches the
+// specified list of services. The call will block till the pre-launch
+// hook exits prior to launching the services. The call does not block
+// on all services to exit. Instead use Init.Wait() to block on the
+// termination of all the services.
+func NewInit(config *InitConfig) (Init, error) {
+	multiServiceMode := len(config.Services) > 1
 	init := &initImpl{
-		log:   log,
-		state: newStateMachine(log),
+		log:   config.Log,
+		state: newStateMachine(config.Log),
 	}
 
 	init.state.set(stateInitializing)
-	init.repo = newServiceRepo(log)
-	init.signals = newSignalManager(log, init.repo, func(proc []*reapedProc) {
+	init.repo = newServiceRepo(config.Log)
+	init.signals = newSignalManager(config.Log, init.repo, func(proc []*reapedProc) {
 		init.janitor.handleProcTerminaton(proc)
 	})
-	init.janitor = newServiceJanitor(log, init.repo, init.signals, multiServiceMode)
+	init.janitor = newServiceJanitor(config.Log, init.repo, init.signals, multiServiceMode)
+
+	init.state.set(stateLaunchingPreHook)
+	if config.PreLaunch != nil {
+		err := launchHook(config.Log, config.PreLaunch)
+		if err != nil {
+			init.shutDown()
+			return nil, fmt.Errorf("pre-launch hook failed, reason: %v", err)
+		}
+	}
 
 	init.state.set(stateLaunchingServices)
-	err := launchServices(log, init.repo, services...)
+	err := launchServices(config.Log, init.repo, config.Services...)
 	if err != nil {
 		init.shutDown()
 		return nil, fmt.Errorf("failed to launch services, reason: %v", err)
