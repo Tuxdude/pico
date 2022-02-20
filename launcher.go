@@ -21,7 +21,7 @@ type serviceLauncher struct {
 // launcherRepo is the repository interface used by the launcher to add
 // the launched services to the repository.
 type launcherRepo interface {
-	addService(serv *launchedService)
+	addService(serv *launchedServiceOrHook)
 }
 
 // launchHook launches the specified hook and waits till it terminates
@@ -82,11 +82,11 @@ func (s *serviceLauncher) startService(multiServiceMode bool, bin string, args .
 		}
 	}
 
-	proc := &launchedService{}
+	proc := &launchedServiceOrHook{}
 	proc.pid = cmd.Process.Pid
-	proc.service.Cmd = bin
-	proc.service.Args = make([]string, len(args))
-	copy(proc.service.Args, args)
+	proc.entity.cmd = bin
+	proc.entity.args = make([]string, len(args))
+	copy(proc.entity.args, args)
 	s.repo.addService(proc)
 
 	s.log.Infof("Launched service %q pid: %d", bin, proc.pid)

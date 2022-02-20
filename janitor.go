@@ -28,7 +28,7 @@ type serviceJanitor struct {
 // janitorRepo is the repository interface used by the janitor to remove
 // the terminated services from the repository.
 type janitorRepo interface {
-	removeService(pid int) (*launchedService, bool)
+	removeService(pid int) (*launchedServiceOrHook, bool)
 	count() int
 }
 
@@ -39,7 +39,7 @@ type janitorSignalManager interface {
 // terminatedService contains information about the launched service that
 // was terminated along with its exit status.
 type terminatedService struct {
-	service    *launchedService
+	service    *launchedServiceOrHook
 	exitStatus int
 }
 
@@ -73,7 +73,7 @@ func (s *serviceJanitor) handleProcTerminaton(procs []*reapedProc) {
 
 // wait waits till the first service terminates and returns the terminated
 // service information along with its exit status.
-func (s *serviceJanitor) wait() (*launchedService, int) {
+func (s *serviceJanitor) wait() (*launchedServiceOrHook, int) {
 	t := <-s.termNotificationCh
 	if t == nil {
 		s.log.Warnf("Service termination notification channel closed Unexpectedly, possibly indicates a bug")
@@ -83,7 +83,7 @@ func (s *serviceJanitor) wait() (*launchedService, int) {
 }
 
 // handleServiceTermination handles the termination of the specified service.
-func (s *serviceJanitor) handleServiceTermination(serv *launchedService, exitStatus int) {
+func (s *serviceJanitor) handleServiceTermination(serv *launchedServiceOrHook, exitStatus int) {
 	s.log.Infof("Service: %v exited, exit status: %d", serv, exitStatus)
 
 	if !s.markShutDown() {
