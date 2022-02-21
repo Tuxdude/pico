@@ -142,7 +142,7 @@ func (s *signalManager) multicastSig(sig unix.Signal) int {
 	for _, pid := range pids {
 		err := unix.Kill(pid, sig)
 		if err != nil {
-			s.log.Warnf("Error sending signal: %s to pid: %d", sigInfo(sig), pid)
+			s.log.Warnf("Failed sending signal: %s to pid: %d", sigInfo(sig), pid)
 		}
 	}
 	return count
