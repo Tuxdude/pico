@@ -108,7 +108,7 @@ func (s *serviceLauncher) attachStdinTTY(pid int) error {
 	var errNo unix.Errno
 	if errors.As(err, &errNo) {
 		if errNo == unix.ENOTTY {
-			s.log.Infof("No stdin TTY found to attach, ignoring")
+			s.log.Debugf("No stdin TTY found to attach, ignoring")
 			return nil
 		}
 		return fmt.Errorf("tcsetpgrp failed attempting to attach stdin TTY, errno: %v", errNo)

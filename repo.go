@@ -56,7 +56,7 @@ func (s *serviceRepo) addService(proc *launchedServiceOrHook) {
 	defer s.mu.Unlock()
 
 	s.entities[proc.pid] = proc
-	s.log.Debugf("Added pid: %d to the list of services/hooks", proc.pid)
+	s.log.Tracef("Added pid: %d to the list of services/hooks", proc.pid)
 }
 
 // removeService removes the launched service from the service list in the
@@ -67,7 +67,7 @@ func (s *serviceRepo) removeService(pid int) (*launchedServiceOrHook, bool) {
 	defer s.mu.Unlock()
 	if proc, ok := s.entities[pid]; ok {
 		delete(s.entities, pid)
-		s.log.Debugf("Deleted pid: %d from the list of services/hooks", pid)
+		s.log.Tracef("Deleted pid: %d from the list of services/hooks", pid)
 		return proc, true
 	}
 	return nil, false

@@ -59,26 +59,26 @@ func (z *zombieReaper) logProcExitStatus(pid int, wstatus unix.WaitStatus) {
 	exitStatus := wstatus.ExitStatus()
 	if !wstatus.Exited() {
 		if wstatus.Signaled() {
-			z.log.Warnf(
+			z.log.Tracef(
 				"Reaped zombie pid: %d was terminated by signal: %s, wstatus: %v!",
 				pid,
 				sigInfo(wstatus.Signal()),
 				wstatus,
 			)
 		} else {
-			z.log.Errorf("Reaped zombie pid: %d did not exit gracefully, wstatus: %v!", pid, wstatus)
+			z.log.Tracef("Reaped zombie pid: %d did not exit gracefully, wstatus: %v!", pid, wstatus)
 		}
 	} else {
 		if exitStatus != 0 {
-			z.log.Warnf(
-				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
+			z.log.Tracef(
+				"Reaped zombie pid: %d, exited with failed exit status: %d, wstatus: %v",
 				pid,
 				exitStatus,
 				wstatus,
 			)
 		} else {
-			z.log.Infof(
-				"Reaped zombie pid: %d, exited with exit status: %d, wstatus: %v",
+			z.log.Tracef(
+				"Reaped zombie pid: %d, exited with successful exit status: %d, wstatus: %v",
 				pid,
 				exitStatus,
 				wstatus,

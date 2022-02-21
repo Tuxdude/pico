@@ -97,7 +97,7 @@ func (s *stateMachine) set(state initState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.validateTarget(state)
-	s.log.Debugf("State Transition [%s] -> [%s]", s.state, state)
+	s.log.Tracef("State Transition [%s] -> [%s]", s.state, state)
 	s.state = state
 }
 

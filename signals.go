@@ -109,7 +109,7 @@ func (s *signalManager) signalHandler(readyCh chan interface{}) {
 	for {
 		osSig, ok := <-s.sigCh
 		if !ok {
-			s.log.Debugf("Signal handler is exiting ...")
+			s.log.Tracef("Signal handler is exiting ...")
 			s.sigHandlerDoneCh <- nil
 			close(s.sigHandlerDoneCh)
 			return
@@ -132,7 +132,7 @@ func (s *signalManager) multicastSig(sig unix.Signal) int {
 
 	count := len(pids)
 	if count > 0 {
-		s.log.Infof(
+		s.log.Debugf(
 			"Signal Forwader - Multicasting signal: %s to %d services",
 			sigInfo(sig),
 			count,
@@ -199,9 +199,9 @@ func (s *signalManager) shutDown() {
 	timeout := time.NewTimer(100 * time.Millisecond)
 	select {
 	case <-s.sigHandlerDoneCh:
-		s.log.Debugf("Signal handler has exited")
+		s.log.Tracef("Signal handler has exited")
 	case <-timeout.C:
-		s.log.Debugf("Signal handler did not exit, giving up and proceeding with termination")
+		s.log.Tracef("Signal handler did not exit, giving up and proceeding with termination")
 	}
 	timeout.Stop()
 }
