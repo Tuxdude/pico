@@ -55,6 +55,11 @@ func NewInit(config *InitConfig) (Init, error) {
 // service which exited. In multi service mode, the exit status is the
 // same as the first service which exited if non-zero, 77 otherwise.
 func (i *initImpl) Wait() int {
+	if i.janitor == nil {
+		i.shutDown()
+		return 77
+	}
+
 	serv, exitStatus := i.janitor.wait()
 	i.log.Infof("Shutting down since service: %v terminated", serv)
 
@@ -89,13 +94,12 @@ func (i *initImpl) launchPreHook(hook *Hook) error {
 
 // launchServices launches the specified list of services.
 func (i *initImpl) launchServices(services ...*Service) error {
+	i.state.set(stateLaunchingServices)
+
 	if len(services) == 0 {
 		i.log.Warnf("Empty list of services specified")
-		// TODO: Avoid building the janitor in this case and just
-		// handle this case gracefully during wait and shut down.
+		return nil
 	}
-
-	i.state.set(stateLaunchingServices)
 
 	// Build the repo and janitor that will be used for managing
 	// the services to be launched.
@@ -117,7 +121,9 @@ func (i *initImpl) launchServices(services ...*Service) error {
 // notifications for all signals, and frees up any other monitoring resources.
 func (i *initImpl) shutDown() {
 	i.state.set(stateTerminatingEntities)
-	shutDownJanitor(i.signals, i.janitor)
+	if i.janitor != nil {
+		shutDownJanitor(i.signals, i.janitor)
+	}
 
 	i.state.set(stateShuttingDown)
 	i.signals.shutDown()
