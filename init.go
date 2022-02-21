@@ -83,6 +83,7 @@ func (i *initImpl) launchPreHook(hook *Hook) error {
 
 	i.janitor.wait()
 	shutDownJanitor(i.signals, i.janitor)
+	i.janitor = nil
 	return nil
 }
 
