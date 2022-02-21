@@ -36,7 +36,7 @@ func (s *Service) String() string {
 // of this hook with a success exit status prior to launching the
 // services.
 type Hook struct {
-	// The full path to the binary for this pre-launch hook.
+	// The full path to the binary for the pre-hook.
 	Cmd string
 	// The list of command line arguments that will need to be passed
 	// to the binary for starting this hook.
@@ -52,11 +52,10 @@ func (s *Hook) String() string {
 type InitConfig struct {
 	// The logger used by Init.
 	Log zzzlogi.Logger
-	// The pre-launch hook to be executed prior to launching the services.
-	// The services will not be launched until the pre-launch hook exits
-	// successfully. If the pre-launch hook exits with a non-zero exit status,
-	// Init will also fail.
-	PreLaunch *Hook
+	// The pre-hook to be executed prior to launching the services. The
+	// services will not be launched until the pre-hook exits successfully.
+	// If the pre-hook exits with a non-zero exit status, Init will also fail.
+	PreHook *Hook
 	// The list of services to be launched and managed by Init. Init will start
 	// the shut down procedure as soon as the first service terminates. As part
 	// of the shut down procedure, Init will attempt to shut down any running

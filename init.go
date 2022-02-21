@@ -21,11 +21,11 @@ type initImpl struct {
 
 // NewInit instantiates a Pico Init/Service Manager combo, performs the
 // necessary initialization for the init responsibilities, launches the
-// pre-launch hook (if one was specified) and launches the
-// specified list of services. The call will block till the pre-launch
-// hook exits prior to launching the services. The call does not block
-// on all services to exit. Instead use Init.Wait() to block on the
-// termination of all the services.
+// pre-hook (if one was specified) and launches the specified list of
+// services. The call will block till the pre-hook exits prior to
+// launching the services. The call does not block on all services to
+// exit. Instead use Init.Wait() to block on the termination of all the
+// services.
 func NewInit(config *InitConfig) (Init, error) {
 	init := &initImpl{
 		log:     config.Log,
@@ -34,7 +34,7 @@ func NewInit(config *InitConfig) (Init, error) {
 	}
 	init.state.set(stateInitializing)
 
-	err := init.launchPreHook(config.PreLaunch)
+	err := init.launchPreHook(config.PreHook)
 	if err != nil {
 		return nil, err
 	}
