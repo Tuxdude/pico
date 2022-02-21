@@ -2,6 +2,7 @@ package pico
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/tuxdude/zzzlogi"
 )
@@ -34,7 +35,12 @@ func NewInit(config *InitConfig) (Init, error) {
 	}
 	init.state.set(stateInitializing)
 
-	err := init.launchPreHook(config.PreHook)
+	err := init.checkPid1()
+	if err != nil {
+		return nil, err
+	}
+
+	err = init.launchPreHook(config.PreHook)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +136,15 @@ func (i *initImpl) shutDown() {
 
 	i.state.set(stateHalted)
 	i.log.Infof("All services have terminated!")
+}
+
+func (i *initImpl) checkPid1() error {
+	pid := os.Getpid()
+	if pid != 1 {
+		return fmt.Errorf("only running as pid 1 is supported, current pid: %d. Instead please launch picoinit as the container's entrypoint", pid)
+	}
+	i.log.Infof("Running as pid: %d", pid)
+	return nil
 }
 
 // buildJanitor builds a janitor and a repository, and associates them with
