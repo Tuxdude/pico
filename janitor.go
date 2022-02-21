@@ -8,6 +8,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	defaultFailedExitStatus = 77
+)
+
 // Service janitor.
 type serviceJanitor struct {
 	// Logger used by the janitor.
@@ -77,7 +81,7 @@ func (s *serviceJanitor) wait() (*launchedServiceOrHook, int) {
 	t := <-s.termNotificationCh
 	if t == nil {
 		s.log.Warnf("Service termination notification channel closed Unexpectedly, possibly indicates a bug")
-		return nil, 77
+		return nil, defaultFailedExitStatus
 	}
 	return t.service, t.exitStatus
 }
@@ -91,21 +95,17 @@ func (s *serviceJanitor) handleServiceTermination(serv *launchedServiceOrHook, e
 		return
 	}
 
-	var resultExitStatus int
+	resultExitStatus := defaultFailedExitStatus
 	if !s.multiServiceMode {
 		// In single service mode persist the exit code same as the
 		// terminated service.
 		resultExitStatus = exitStatus
-	} else {
+	} else if exitStatus != 0 {
 		// In multi service mode calculate the exit code based on:
 		//     - Use the terminated process's exit code if non-zero.
 		//     - Set exit code to a pre-determined non-zero value if
 		//       terminated process's exit code is zero.
-		if exitStatus != 0 {
-			resultExitStatus = exitStatus
-		} else {
-			resultExitStatus = 77
-		}
+		resultExitStatus = exitStatus
 	}
 
 	// Wake up the waiter goroutine to handle the rest.
