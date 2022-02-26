@@ -1,3 +1,5 @@
+GITHUB_OS_LIST := ubuntu-latest
+
 include ./.bootstrap/makesystem.mk
 
 ifeq ($(MAKESYSTEM_FOUND),1)
