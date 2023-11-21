@@ -1,4 +1,4 @@
 github.com/tuxdude/zzzlogi v0.1.0 h1:a7JrdqFcH3BTFxQaM6xOBYd+iI/oq3p/xOzCXnAjprM=
 github.com/tuxdude/zzzlogi v0.1.0/go.mod h1:pDoI7GNJZuYLZtVx4WL7lOQuECECY+XCHF6Sbv7YvzY=
-golang.org/x/sys v0.0.0-20220209214540-3681064d5158 h1:rm+CHSpPEEW2IsXUib1ThaHIjuBVZjxNgSKmBLFfD4c=
-golang.org/x/sys v0.0.0-20220209214540-3681064d5158/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.1.0 h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
