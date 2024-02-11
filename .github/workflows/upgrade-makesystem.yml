@@ -44,7 +44,6 @@ jobs:
           private_key: ${{ secrets.UPGRADE_MAKESYSTEM_BOT_APP_PRIVATE_KEY }}
 
       - name: Create Pull Request
-        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ steps.generate-token.outputs.token }}
