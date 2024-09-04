@@ -4,5 +4,5 @@ go 1.17
 
 require (
 	github.com/tuxdude/zzzlogi v0.1.1
-	golang.org/x/sys v0.24.0
+	golang.org/x/sys v0.25.0
 )
