@@ -3,6 +3,6 @@ module github.com/tuxdude/pico
 go 1.17
 
 require (
-	github.com/tuxdude/zzzlogi v0.1.2
+	github.com/tuxdude/zzzlogi v0.2.0
 	golang.org/x/sys v0.25.0
 )
